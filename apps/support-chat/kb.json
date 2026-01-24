@@ -1,0 +1,22 @@
+[
+  {
+    "question": "How do I reset my password?",
+    "answer": "Go to Account Settings and select \"Reset password\". We will email a reset link that expires after 15 minutes. If you cannot access your email, contact support to verify account ownership."
+  },
+  {
+    "question": "What is the refund policy?",
+    "answer": "Monthly plans can be refunded within 7 days of the most recent charge. Annual plans can be refunded within 14 days. Refunds typically process within 3-5 business days."
+  },
+  {
+    "question": "Where is my order and how long does shipping take?",
+    "answer": "Orders ship within 2 business days. Standard shipping takes 4-6 business days and express shipping takes 1-2 business days. Tracking numbers appear in order history once scanned."
+  },
+  {
+    "question": "Why is my verification code not working?",
+    "answer": "Verification codes are valid for 10 minutes. If a code expires, request a new one from the login screen. Avoid requesting more than 3 codes within 10 minutes."
+  },
+  {
+    "question": "How do I troubleshoot login issues?",
+    "answer": "Clear your browser cache, disable ad blockers, and retry. If the issue persists, try a private window or another browser and share any error codes with support."
+  }
+]

@@ -1,0 +1,270 @@
+spec is "1.0"
+
+# UI styling lives in the ui block (not app:).
+ui:
+  theme is "light"
+  accent color is "blue"
+  density is "comfortable"
+
+# Persisted FAQ entries used by the KB search tool.
+record "KBEntry":
+  fields:
+    question is text must be present
+    answer is text must be present
+# Records persist by default; no TTL means entries remain until deleted.
+
+# Chat history entries for each user (expires after 7 days).
+record "Conversation":
+  fields:
+    user_id is text must be present
+    timestamp is number must be present
+    speaker is text must be present
+    message is text must be present
+  persisted:
+    ttl_hours is 168
+
+# Deterministic local KB lookup tool.
+tool "search_kb":
+  implemented using python
+  purity is "pure"
+  timeout_seconds is 1
+
+  input:
+    query is text
+
+  output:
+    answer is text
+
+# Base AI profile with KB tool exposure.
+ai "support_ai":
+  provider is "openai"
+  model is "gpt-3.5-turbo"
+  system_prompt is "You are a helpful, concise customer-support assistant. Always try to use our KB search tool for factual answers. If uncertain, say you don't know."
+  tools:
+    expose "search_kb"
+  memory:
+    short_term is 10
+    semantic is false
+    profile is false
+
+# Agent layer for UI-facing behavior tweaks.
+agent "support_agent":
+  ai is "support_ai"
+  system_prompt is "Greet users politely; prefer bullet points for multi-step fixes."
+
+# Seed the KB with deterministic entries when empty.
+flow "seed_kb":
+  find "KBEntry" where true
+  let kb_count is list length of kbentry_results
+  if kb_count is 0:
+    let seed_entries is list:
+      map:
+        "question" is "How do I reset my password?"
+        "answer" is "Go to Account Settings and select Reset password. We will email a reset link that expires after 15 minutes. If you cannot access your email, contact support to verify account ownership."
+      map:
+        "question" is "What is the refund policy?"
+        "answer" is "Monthly plans can be refunded within 7 days of the most recent charge. Annual plans can be refunded within 14 days. Refunds typically process within 3-5 business days."
+      map:
+        "question" is "Where is my order and how long does shipping take?"
+        "answer" is "Orders ship within 2 business days. Standard shipping takes 4-6 business days and express shipping takes 1-2 business days. Tracking numbers appear in order history once scanned."
+      map:
+        "question" is "Why is my verification code not working?"
+        "answer" is "Verification codes are valid for 10 minutes. If a code expires, request a new one from the login screen. Avoid requesting more than 3 codes within 10 minutes."
+      map:
+        "question" is "How do I troubleshoot login issues?"
+        "answer" is "Clear your browser cache, disable ad blockers, and retry. If the issue persists, try a private window or another browser and share any error codes with support."
+    for each entry in seed_entries:
+      create "KBEntry" with entry as kb_entry
+  return kb_count
+
+# Start a new conversation by inserting a system marker.
+flow "start_conversation":
+  # Inline seeding so this flow is self-contained.
+  find "KBEntry" where true
+  let kb_count is list length of kbentry_results
+  if kb_count is 0:
+    let seed_entries is list:
+      map:
+        "question" is "How do I reset my password?"
+        "answer" is "Go to Account Settings and select Reset password. We will email a reset link that expires after 15 minutes. If you cannot access your email, contact support to verify account ownership."
+      map:
+        "question" is "What is the refund policy?"
+        "answer" is "Monthly plans can be refunded within 7 days of the most recent charge. Annual plans can be refunded within 14 days. Refunds typically process within 3-5 business days."
+      map:
+        "question" is "Where is my order and how long does shipping take?"
+        "answer" is "Orders ship within 2 business days. Standard shipping takes 4-6 business days and express shipping takes 1-2 business days. Tracking numbers appear in order history once scanned."
+      map:
+        "question" is "Why is my verification code not working?"
+        "answer" is "Verification codes are valid for 10 minutes. If a code expires, request a new one from the login screen. Avoid requesting more than 3 codes within 10 minutes."
+      map:
+        "question" is "How do I troubleshoot login issues?"
+        "answer" is "Clear your browser cache, disable ad blockers, and retry. If the issue persists, try a private window or another browser and share any error codes with support."
+    for each entry in seed_entries:
+      create "KBEntry" with entry as kb_entry
+
+  # Prefer an explicit user_id when provided, otherwise fall back to state/demo.
+  try:
+    let provided_user is input.user_id
+    if provided_user is "":
+      set state.current_user_id is "demo-user"
+    else:
+      set state.current_user_id is provided_user
+  with catch err:
+    try:
+      let existing_user is state.current_user_id
+    with catch err:
+      set state.current_user_id is "demo-user"
+
+  # Create a system message as a conversation marker.
+  find "Conversation" where user_id is state.current_user_id
+  let count is list length of conversation_results
+  set state.system_row with:
+    user_id is state.current_user_id
+    timestamp is count + 1
+    speaker is "system"
+    message is "New conversation started."
+  create "Conversation" with state.system_row as system_msg
+
+  # Refresh chat state from persisted records.
+  find "Conversation" where user_id is state.current_user_id
+  let chat_items is map conversation_results with item as row:
+    map:
+      "role" is row.speaker
+      "content" is row.message
+      "created" is row.timestamp
+  set state.chat.messages is chat_items
+  set state.chat.thinking is false
+  return state.current_user_id
+
+# Handle a single user message end-to-end.
+flow "handle_message":
+  # Inline seeding to guarantee KB availability.
+  find "KBEntry" where true
+  let kb_count is list length of kbentry_results
+  if kb_count is 0:
+    let seed_entries is list:
+      map:
+        "question" is "How do I reset my password?"
+        "answer" is "Go to Account Settings and select Reset password. We will email a reset link that expires after 15 minutes. If you cannot access your email, contact support to verify account ownership."
+      map:
+        "question" is "What is the refund policy?"
+        "answer" is "Monthly plans can be refunded within 7 days of the most recent charge. Annual plans can be refunded within 14 days. Refunds typically process within 3-5 business days."
+      map:
+        "question" is "Where is my order and how long does shipping take?"
+        "answer" is "Orders ship within 2 business days. Standard shipping takes 4-6 business days and express shipping takes 1-2 business days. Tracking numbers appear in order history once scanned."
+      map:
+        "question" is "Why is my verification code not working?"
+        "answer" is "Verification codes are valid for 10 minutes. If a code expires, request a new one from the login screen. Avoid requesting more than 3 codes within 10 minutes."
+      map:
+        "question" is "How do I troubleshoot login issues?"
+        "answer" is "Clear your browser cache, disable ad blockers, and retry. If the issue persists, try a private window or another browser and share any error codes with support."
+    for each entry in seed_entries:
+      create "KBEntry" with entry as kb_entry
+
+  # Prefer an explicit user_id when provided, otherwise fall back to state/demo.
+  try:
+    let provided_user is input.user_id
+    if provided_user is "":
+      set state.current_user_id is "demo-user"
+    else:
+      set state.current_user_id is provided_user
+  with catch err:
+    try:
+      let existing_user is state.current_user_id
+    with catch err:
+      set state.current_user_id is "demo-user"
+
+  # Read the user message from the chat composer input.
+  try:
+    let user_message is input.message
+  with catch err:
+    return "missing_message"
+  if user_message is "":
+    return "empty_message"
+
+  # Save the user message.
+  set state.chat.thinking is true
+  find "Conversation" where user_id is state.current_user_id
+  let count is list length of conversation_results
+  set state.user_row with:
+    user_id is state.current_user_id
+    timestamp is count + 1
+    speaker is "user"
+    message is user_message
+  create "Conversation" with state.user_row as user_msg
+
+  # Deterministic KB lookup.
+  let kb_result is search_kb:
+    query is user_message
+  let kb_answer is kb_result.answer
+  if kb_answer is "":
+    set state.assistant_prompt is user_message
+  else:
+    set state.assistant_prompt is user_message + " [KB] " + kb_answer
+
+  # If the API key is missing, skip the AI call and use KB (or fallback).
+  let api_ref is map get secrets key "NAMEL3SS_OPENAI_API_KEY"
+  if api_ref.available is false:
+    if kb_answer is "":
+      set state.assistant_text is "I'm sorry, I don't have an answer for that."
+    else:
+      set state.assistant_text is kb_answer
+  else:
+    try:
+      ask ai support_agent with input: state.assistant_prompt as reply
+      set state.assistant_text is reply
+    with catch err:
+      set state.assistant_text is "(Assistant unavailable)"
+
+  # Save the assistant response.
+  set state.assistant_row with:
+    user_id is state.current_user_id
+    timestamp is count + 2
+    speaker is "assistant"
+    message is state.assistant_text
+  create "Conversation" with state.assistant_row as assistant_msg
+
+  # Refresh chat state from persisted records.
+  find "Conversation" where user_id is state.current_user_id
+  let chat_items is map conversation_results with item as row:
+    map:
+      "role" is row.speaker
+      "content" is row.message
+      "created" is row.timestamp
+  set state.chat.messages is chat_items
+  set state.chat.thinking is false
+  return state.assistant_text
+
+# Utility flow for tests/diagnostics.
+flow "count_conversation":
+  try:
+    let provided_user is input.user_id
+    if provided_user is "":
+      set state.current_user_id is "demo-user"
+    else:
+      set state.current_user_id is provided_user
+  with catch err:
+    try:
+      let existing_user is state.current_user_id
+    with catch err:
+      set state.current_user_id is "demo-user"
+  find "Conversation" where user_id is state.current_user_id
+  let count is list length of conversation_results
+  return count
+
+page "SupportChat":
+  title is "Customer Support Chat"
+  text is "Chat with our support assistant. Ask anything from the knowledge base."
+  section "Chat":
+    chat:
+      messages from is state.chat.messages
+      thinking when is state.chat.thinking
+      composer calls flow "handle_message"
+  section "New conversation?":
+    text is "Start a fresh thread with a system marker."
+    button "Start Over":
+      calls flow "start_conversation"
+  section "Maintenance":
+    text is "Seed the KB if needed (used by tests)."
+    button "Seed KB":
+      calls flow "seed_kb"
