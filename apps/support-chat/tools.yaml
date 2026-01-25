@@ -1,8 +1,0 @@
-tools:
-  "search_kb":
-    kind: "python"
-    entry: "tools.search_kb:run"
-    runner: "local"
-    purity: "pure"
-    timeout_ms: 1000
-    sandbox: true

@@ -9,6 +9,7 @@ fi
 # CI-safe defaults: no external model calls.
 unset NAMEL3SS_OPENAI_API_KEY
 unset OPENAI_API_KEY
+export N3_IDENTITY_ID=demo-user
 
 # Persist across UI actions in this script.
 export N3_PERSIST_TARGET=sqlite
@@ -21,14 +22,9 @@ if n3 app.ai data reset --yes >/dev/null 2>&1; then
 fi
 
 manifest=$(n3 app.ai ui)
-seed_action=$(echo "$manifest" | jq -r '.actions | to_entries[] | select(.value.type=="call_flow" and .value.flow=="seed_kb") | .key' | head -n1)
 start_action=$(echo "$manifest" | jq -r '.actions | to_entries[] | select(.value.type=="call_flow" and .value.flow=="start_conversation") | .key' | head -n1)
 send_action=$(echo "$manifest" | jq -r '.actions | to_entries[] | select(.value.type=="call_flow" and .value.flow=="handle_message") | .key' | head -n1)
 
-if [[ -z "$seed_action" || "$seed_action" == "null" ]]; then
-  echo "Seed KB action not found." >&2
-  exit 1
-fi
 if [[ -z "$start_action" || "$start_action" == "null" ]]; then
   echo "Start conversation action not found." >&2
   exit 1
@@ -38,7 +34,6 @@ if [[ -z "$send_action" || "$send_action" == "null" ]]; then
   exit 1
 fi
 
-n3 app.ai "$seed_action" --json "{}" >/dev/null
 n3 app.ai "$start_action" --json "{}" >/dev/null
 
 response=$(n3 app.ai "$send_action" --json '{"message":"How do I reset my password?"}')

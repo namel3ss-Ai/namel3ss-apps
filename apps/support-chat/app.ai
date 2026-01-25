@@ -3,10 +3,12 @@ spec is "1.0"
 # UI styling lives in the ui block (not app:).
 ui:
   theme is "light"
-  accent color is "blue"
+  accent color is "indigo"
+  shape is "rounded"
   density is "comfortable"
+  motion is "subtle"
 
-# Persisted FAQ entries used by the KB search tool.
+# Persisted FAQ entries used by the KB search flow.
 record "KBEntry":
   fields:
     question is text must be present
@@ -16,6 +18,7 @@ record "KBEntry":
 # Chat history entries for each user (expires after 7 days).
 record "Conversation":
   fields:
+    session_id is text must be present
     user_id is text must be present
     timestamp is number must be present
     speaker is text must be present
@@ -23,25 +26,64 @@ record "Conversation":
   persisted:
     ttl_hours is 168
 
-# Deterministic local KB lookup tool.
-tool "search_kb":
-  implemented using python
-  purity is "pure"
-  timeout_seconds is 1
+# Session metadata for the conversation list.
+record "ConversationSession":
+  fields:
+    session_id is text must be present
+    user_id is text must be present
+    started_at is number must be present
+    title is text must be present
+  tenant_key is identity.id
+  persisted:
+    ttl_hours is 168
 
-  input:
-    query is text
+# Optional file metadata (stored when uploads are provided via API/CLI).
+record "UserFile":
+  fields:
+    file_id is text must be present
+    user_id is text must be present
+    file_name is text must be present
+    uploaded_at is number must be present
+  tenant_key is identity.id
+  persisted:
+    ttl_hours is 168
 
-  output:
-    answer is text
+# Search results (populated by search_messages).
+record "SearchResult":
+  fields:
+    session_id is text must be present
+    user_id is text must be present
+    timestamp is number must be present
+    speaker is text must be present
+    message is text must be present
+  tenant_key is identity.id
+  persisted:
+    ttl_hours is 168
 
-# Base AI profile with KB tool exposure.
+# Last matched KB entry per user (scoped by tenant_key).
+record "KBMatch":
+  fields:
+    question is text must be present
+    answer is text must be present
+    matched_at is number must be present
+  tenant_key is identity.id
+  persisted:
+    ttl_hours is 168
+
+# Lightweight feedback from the sidebar buttons.
+record "Feedback":
+  fields:
+    user_id is text must be present
+    message_id is text must be present
+    value is text must be present
+  persisted:
+    ttl_hours is 168
+
+# Base AI profile.
 ai "support_ai":
   provider is "openai"
   model is "gpt-3.5-turbo"
-  system_prompt is "You are a helpful, concise customer-support assistant. Always try to use our KB search tool for factual answers. If uncertain, say you don't know."
-  tools:
-    expose "search_kb"
+  system_prompt is "You are a helpful, concise customer-support assistant for the Namel3ss Store. If you are unsure, say you don't know."
   memory:
     short_term is 10
     semantic is false
@@ -52,37 +94,12 @@ agent "support_agent":
   ai is "support_ai"
   system_prompt is "Greet users politely; prefer bullet points for multi-step fixes."
 
-# Seed the KB with deterministic entries when empty.
-flow "seed_kb":
-  find "KBEntry" where true
-  let kb_count is list length of kbentry_results
-  if kb_count is 0:
-    let seed_entries is list:
-      map:
-        "question" is "How do I reset my password?"
-        "answer" is "Go to Account Settings and select Reset password. We will email a reset link that expires after 15 minutes. If you cannot access your email, contact support to verify account ownership."
-      map:
-        "question" is "What is the refund policy?"
-        "answer" is "Monthly plans can be refunded within 7 days of the most recent charge. Annual plans can be refunded within 14 days. Refunds typically process within 3-5 business days."
-      map:
-        "question" is "Where is my order and how long does shipping take?"
-        "answer" is "Orders ship within 2 business days. Standard shipping takes 4-6 business days and express shipping takes 1-2 business days. Tracking numbers appear in order history once scanned."
-      map:
-        "question" is "Why is my verification code not working?"
-        "answer" is "Verification codes are valid for 10 minutes. If a code expires, request a new one from the login screen. Avoid requesting more than 3 codes within 10 minutes."
-      map:
-        "question" is "How do I troubleshoot login issues?"
-        "answer" is "Clear your browser cache, disable ad blockers, and retry. If the issue persists, try a private window or another browser and share any error codes with support."
-    for each entry in seed_entries:
-      create "KBEntry" with entry as kb_entry
-  return kb_count
-
 # Start a new conversation by inserting a system marker.
-flow "start_conversation":
+flow "start_conversation": requires identity.id is not ""
   # Inline seeding so this flow is self-contained.
   find "KBEntry" where true
-  let kb_count is list length of kbentry_results
-  if kb_count is 0:
+  let seeded is list length of kbentry_results
+  if seeded is 0:
     let seed_entries is list:
       map:
         "question" is "How do I reset my password?"
@@ -99,49 +116,81 @@ flow "start_conversation":
       map:
         "question" is "How do I troubleshoot login issues?"
         "answer" is "Clear your browser cache, disable ad blockers, and retry. If the issue persists, try a private window or another browser and share any error codes with support."
-    for each entry in seed_entries:
-      create "KBEntry" with entry as kb_entry
+    for each kb_item in seed_entries:
+      create "KBEntry" with kb_item as kb_entry
 
-  # Prefer an explicit user_id when provided, otherwise fall back to state/demo.
-  try:
-    let provided_user is input.user_id
-    if provided_user is "":
-      set state.current_user_id is "demo-user"
-    else:
-      set state.current_user_id is provided_user
-  with catch err:
-    try:
-      let existing_user is state.current_user_id
-    with catch err:
-      set state.current_user_id is "demo-user"
+  # Identity is the source of user_id.
+  set state.current_user_id is identity.id
+  delete "KBMatch" where true
+  delete "SearchResult" where true
+
+  # Create a new conversation session.
+  find "ConversationSession" where true
+  let session_count is list length of conversationsession_results
+  let session_id_pool is list:
+    "sess-0001"
+    "sess-0002"
+    "sess-0003"
+    "sess-0004"
+    "sess-0005"
+    "sess-0006"
+    "sess-0007"
+    "sess-0008"
+    "sess-0009"
+    "sess-0010"
+  let session_title_pool is list:
+    "Support Session 1"
+    "Support Session 2"
+    "Support Session 3"
+    "Support Session 4"
+    "Support Session 5"
+    "Support Session 6"
+    "Support Session 7"
+    "Support Session 8"
+    "Support Session 9"
+    "Support Session 10"
+  if session_count is greater than 9:
+    set state.current_session_id is "sess-overflow"
+    set state.current_session_title is "Support Session"
+  else:
+    let session_id is list get session_id_pool at session_count
+    let session_title is list get session_title_pool at session_count
+    set state.current_session_id is session_id
+    set state.current_session_title is session_title
+  set state.session_row with:
+    session_id is state.current_session_id
+    user_id is state.current_user_id
+    started_at is session_count
+    title is state.current_session_title
+  create "ConversationSession" with state.session_row as session_entry
 
   # Create a system message as a conversation marker.
-  find "Conversation" where user_id is state.current_user_id
+  find "Conversation" where user_id is state.current_user_id and session_id is state.current_session_id
   let count is list length of conversation_results
   set state.system_row with:
+    session_id is state.current_session_id
     user_id is state.current_user_id
-    timestamp is count + 1
+    timestamp is count
     speaker is "system"
     message is "New conversation started."
   create "Conversation" with state.system_row as system_msg
 
   # Refresh chat state from persisted records.
-  find "Conversation" where user_id is state.current_user_id
-  let chat_items is map conversation_results with item as row:
+  find "Conversation" where user_id is state.current_user_id and session_id is state.current_session_id
+  let chat_items is map conversation_results with item as chat_entry:
     map:
-      "role" is row.speaker
-      "content" is row.message
-      "created" is row.timestamp
+      "role" is chat_entry.speaker
+      "content" is chat_entry.message
   set state.chat.messages is chat_items
   set state.chat.thinking is false
   return state.current_user_id
 
 # Handle a single user message end-to-end.
-flow "handle_message":
+flow "handle_message": requires identity.id is not ""
   # Inline seeding to guarantee KB availability.
   find "KBEntry" where true
-  let kb_count is list length of kbentry_results
-  if kb_count is 0:
+  let seeded is list length of kbentry_results
+  if seeded is 0:
     let seed_entries is list:
       map:
         "question" is "How do I reset my password?"
@@ -158,21 +207,52 @@ flow "handle_message":
       map:
         "question" is "How do I troubleshoot login issues?"
         "answer" is "Clear your browser cache, disable ad blockers, and retry. If the issue persists, try a private window or another browser and share any error codes with support."
-    for each entry in seed_entries:
-      create "KBEntry" with entry as kb_entry
+    for each kb_item in seed_entries:
+      create "KBEntry" with kb_item as kb_entry
 
-  # Prefer an explicit user_id when provided, otherwise fall back to state/demo.
+  # Identity is the source of user_id.
+  set state.current_user_id is identity.id
   try:
-    let provided_user is input.user_id
-    if provided_user is "":
-      set state.current_user_id is "demo-user"
-    else:
-      set state.current_user_id is provided_user
+    let existing_session is state.current_session_id
   with catch err:
-    try:
-      let existing_user is state.current_user_id
-    with catch err:
-      set state.current_user_id is "demo-user"
+    find "ConversationSession" where true
+    let session_count is list length of conversationsession_results
+    let session_id_pool is list:
+      "sess-0001"
+      "sess-0002"
+      "sess-0003"
+      "sess-0004"
+      "sess-0005"
+      "sess-0006"
+      "sess-0007"
+      "sess-0008"
+      "sess-0009"
+      "sess-0010"
+    let session_title_pool is list:
+      "Support Session 1"
+      "Support Session 2"
+      "Support Session 3"
+      "Support Session 4"
+      "Support Session 5"
+      "Support Session 6"
+      "Support Session 7"
+      "Support Session 8"
+      "Support Session 9"
+      "Support Session 10"
+    if session_count is greater than 9:
+      set state.current_session_id is "sess-overflow"
+      set state.current_session_title is "Support Session"
+    else:
+      let session_id is list get session_id_pool at session_count
+      let session_title is list get session_title_pool at session_count
+      set state.current_session_id is session_id
+      set state.current_session_title is session_title
+    set state.session_row with:
+      session_id is state.current_session_id
+      user_id is state.current_user_id
+      started_at is session_count
+      title is state.current_session_title
+    create "ConversationSession" with state.session_row as session_entry
 
   # Read the user message from the chat composer input.
   try:
@@ -182,89 +262,263 @@ flow "handle_message":
   if user_message is "":
     return "empty_message"
 
-  # Save the user message.
   set state.chat.thinking is true
-  find "Conversation" where user_id is state.current_user_id
+
+  # Ensure a system marker exists for fresh chats.
+  find "Conversation" where user_id is state.current_user_id and session_id is state.current_session_id
   let count is list length of conversation_results
+  if count is 0:
+    set state.system_row with:
+      session_id is state.current_session_id
+      user_id is state.current_user_id
+      timestamp is count
+      speaker is "system"
+      message is "New conversation started."
+    create "Conversation" with state.system_row as system_msg
+
+  # Save the user message using the current count as a stable sequence.
+  find "Conversation" where user_id is state.current_user_id and session_id is state.current_session_id
+  let user_seq is list length of conversation_results
   set state.user_row with:
+    session_id is state.current_session_id
     user_id is state.current_user_id
-    timestamp is count + 1
+    timestamp is user_seq
     speaker is "user"
     message is user_message
   create "Conversation" with state.user_row as user_msg
+  set state.user_seq is user_seq
+  set state.chat.last_user_message is user_message
 
-  # Deterministic KB lookup.
-  let kb_result is search_kb:
-    query is user_message
-  let kb_answer is kb_result.answer
-  if kb_answer is "":
-    set state.assistant_prompt is user_message
+  # Deterministic KB lookup (exact match).
+  find "KBEntry" where question is user_message
+  let match_count is list length of kbentry_results
+  if match_count is 0:
+    set state.kb_answer is ""
+    set state.chat.kb_entry_used is false
+    set state.chat.kb_entry with:
+      question is ""
+      answer is ""
+    delete "KBMatch" where true
   else:
-    set state.assistant_prompt is user_message + " [KB] " + kb_answer
+    let kb_row is list get kbentry_results at 0
+    set state.kb_answer is kb_row.answer
+    set state.chat.kb_entry_used is true
+    set state.chat.kb_entry with:
+      question is kb_row.question
+      answer is kb_row.answer
+    delete "KBMatch" where true
+    set state.kb_match with:
+      question is kb_row.question
+      answer is kb_row.answer
+      matched_at is state.user_seq
+    create "KBMatch" with state.kb_match as kb_match_row
 
-  # If the API key is missing, skip the AI call and use KB (or fallback).
-  let api_ref is map get secrets key "NAMEL3SS_OPENAI_API_KEY"
-  if api_ref.available is false:
-    if kb_answer is "":
+  # Prefer KB answers; otherwise call the AI if configured.
+  if state.kb_answer is "":
+    let api_ref is map get secrets key "NAMEL3SS_OPENAI_API_KEY"
+    if api_ref.available is false:
       set state.assistant_text is "I'm sorry, I don't have an answer for that."
     else:
-      set state.assistant_text is kb_answer
+      try:
+        run agent "support_agent" with input: user_message as reply
+        set state.assistant_text is reply.text
+      with catch err:
+        set state.assistant_text is "(Assistant unavailable)"
   else:
-    try:
-      ask ai support_agent with input: state.assistant_prompt as reply
-      set state.assistant_text is reply
-    with catch err:
-      set state.assistant_text is "(Assistant unavailable)"
+    set state.assistant_text is state.kb_answer
 
   # Save the assistant response.
+  find "Conversation" where user_id is state.current_user_id and session_id is state.current_session_id
+  let assistant_seq is list length of conversation_results
   set state.assistant_row with:
+    session_id is state.current_session_id
     user_id is state.current_user_id
-    timestamp is count + 2
+    timestamp is assistant_seq
     speaker is "assistant"
     message is state.assistant_text
   create "Conversation" with state.assistant_row as assistant_msg
+  set state.chat.last_assistant_id is assistant_seq
 
   # Refresh chat state from persisted records.
-  find "Conversation" where user_id is state.current_user_id
-  let chat_items is map conversation_results with item as row:
+  find "Conversation" where user_id is state.current_user_id and session_id is state.current_session_id
+  let chat_items is map conversation_results with item as chat_entry:
     map:
-      "role" is row.speaker
-      "content" is row.message
-      "created" is row.timestamp
+      "role" is chat_entry.speaker
+      "content" is chat_entry.message
   set state.chat.messages is chat_items
   set state.chat.thinking is false
   return state.assistant_text
 
-# Utility flow for tests/diagnostics.
-flow "count_conversation":
+flow "load_session":
+  set state.current_user_id is identity.id
   try:
-    let provided_user is input.user_id
-    if provided_user is "":
-      set state.current_user_id is "demo-user"
-    else:
-      set state.current_user_id is provided_user
+    let session_id is input.row.session_id
+    set state.current_session_id is session_id
   with catch err:
     try:
-      let existing_user is state.current_user_id
+      let session_id is input.session_id
+      set state.current_session_id is session_id
     with catch err:
-      set state.current_user_id is "demo-user"
+      return "missing_session"
+  find "Conversation" where user_id is state.current_user_id and session_id is state.current_session_id
+  let count is list length of conversation_results
+  if count is 0:
+    set state.chat.messages is list:
+      map:
+        "role" is "system"
+        "content" is "No messages yet."
+  else:
+    let chat_items is map conversation_results with item as chat_entry:
+      map:
+        "role" is chat_entry.speaker
+        "content" is chat_entry.message
+    set state.chat.messages is chat_items
+  set state.chat.thinking is false
+  return state.current_session_id
+
+flow "record_feedback_up": requires identity.id is not ""
+  set state.current_user_id is identity.id
+  try:
+    let msg_id is state.chat.last_assistant_id
+  with catch err:
+    return "no_message"
+  set state.feedback_row with:
+    user_id is state.current_user_id
+    message_id is msg_id
+    value is "up"
+  create "Feedback" with state.feedback_row as feedback_entry
+  return "ok"
+
+flow "record_feedback_down": requires identity.id is not ""
+  set state.current_user_id is identity.id
+  try:
+    let msg_id is state.chat.last_assistant_id
+  with catch err:
+    return "no_message"
+  set state.feedback_row with:
+    user_id is state.current_user_id
+    message_id is msg_id
+    value is "down"
+  create "Feedback" with state.feedback_row as feedback_entry
+  return "ok"
+
+flow "record_feedback": requires identity.id is not ""
+  set state.current_user_id is identity.id
+  try:
+    let msg_id is input.message_id
+    let value is input.value
+  with catch err:
+    return "missing_feedback"
+  if value is "":
+    return "missing_feedback"
+  set state.feedback_row with:
+    user_id is state.current_user_id
+    message_id is msg_id
+    value is value
+  create "Feedback" with state.feedback_row as feedback_entry
+  return "ok"
+
+flow "process_upload": requires identity.id is not ""
+  set state.current_user_id is identity.id
+  try:
+    let file_id is input.file_id
+    let file_name is input.file_name
+  with catch err:
+    return "missing_file"
+  find "UserFile" where user_id is state.current_user_id
+  let count is list length of userfile_results
+  set state.file_row with:
+    file_id is file_id
+    user_id is state.current_user_id
+    file_name is file_name
+    uploaded_at is count
+  create "UserFile" with state.file_row as file_entry
+  return "ok"
+
+flow "search_messages": requires identity.id is not ""
+  set state.current_user_id is identity.id
+  try:
+    let query is input.query
+  with catch err:
+    try:
+      let query is state.chat.last_user_message
+    with catch err:
+      return "missing_query"
+  if query is "":
+    return "empty_query"
+  delete "SearchResult" where true
+  find "Conversation" where user_id is state.current_user_id and message is query
+  let results is map conversation_results with item as conv_item:
+    map:
+      "session_id" is conv_item.session_id
+      "user_id" is conv_item.user_id
+      "timestamp" is conv_item.timestamp
+      "speaker" is conv_item.speaker
+      "message" is conv_item.message
+  for each search_item in results:
+    create "SearchResult" with search_item as search_row
+  set state.search_results is results
+  return results
+
+# Utility flow for tests/diagnostics.
+flow "count_conversation":
+  set state.current_user_id is identity.id
   find "Conversation" where user_id is state.current_user_id
   let count is list length of conversation_results
   return count
 
 page "SupportChat":
   title is "Customer Support Chat"
-  text is "Chat with our support assistant. Ask anything from the knowledge base."
-  section "Chat":
-    chat:
-      messages from is state.chat.messages
-      thinking when is state.chat.thinking
-      composer calls flow "handle_message"
-  section "New conversation?":
-    text is "Start a fresh thread with a system marker."
-    button "Start Over":
-      calls flow "start_conversation"
-  section "Maintenance":
-    text is "Seed the KB if needed (used by tests)."
-    button "Seed KB":
-      calls flow "seed_kb"
+  row:
+    column:
+      section "Conversation":
+        chat:
+          messages from is state.chat.messages
+          thinking when is state.chat.thinking
+          composer calls flow "handle_message"
+    column:
+      section "About":
+        text is "Powered by Namel3ss."
+        text is "Ask about:"
+        text is "- Password resets"
+        text is "- Billing/refunds"
+        text is "- Shipping issues"
+        button "Start New Conversation":
+          calls flow "start_conversation"
+      section "Your Conversations":
+        list is ConversationSession:
+          variant is "two_line"
+          item:
+            primary is "title"
+            secondary is started_at
+          actions:
+            action "Open":
+              calls flow "load_session"
+          empty_text is "No conversations yet."
+      section "Answer Source":
+        list is KBMatch:
+          variant is "two_line"
+          item:
+            primary is question
+            secondary is answer
+          empty_text is "No KB match yet."
+      section "Search My History":
+        text is "Search uses the most recent message when no query is provided."
+        button "Search Last Message":
+          calls flow "search_messages"
+        list is SearchResult:
+          variant is "two_line"
+          item:
+            primary is message
+            secondary is speaker
+          empty_text is "No search results."
+      section "Upload Your File":
+        text is "Upload controls are not available in the current UI grammar."
+      section "Was this helpful?":
+        row:
+          column:
+            button "👍":
+              calls flow "record_feedback_up"
+          column:
+            button "👎":
+              calls flow "record_feedback_down"
