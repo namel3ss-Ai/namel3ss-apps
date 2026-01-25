@@ -1,57 +1,36 @@
 # Support Chat (namel3ss)
 
-A fully native customer support chat app built in pure namel3ss grammar (spec 1.0). It runs without external tools, persists conversations, and keeps behavior deterministic while optionally using OpenAI for responses.
+A fully native AI support assistant built in the [namel3ss](https://github.com/namel3ss-Ai/namel3ss) DSL — no Python, no plugins.
 
 ## Features
-- Chat UI with persisted messages and a typing indicator
-- Session history via `ConversationSession`
-- Deterministic KB matching (exact-match against seeded FAQ entries)
-- Optional OpenAI responses when a key is present
-- Feedback buttons (👍/👎) stored in `Feedback`
-- Search history (exact-match search, results stored in `SearchResult`)
+- 💬 Chat UI with AI + KB fallback
+- 🧠 OpenAI support via `run agent`
+- 🧾 Session history
+- 🗂️ Inline KB seeding
+- 👍 Feedback buttons
 
-## Setup
+## Run the App
 
-Install the CLI:
-```
+```bash
 pip install namel3ss
-```
 
-Set identity (required by flows):
-```
 export N3_IDENTITY_ID=demo-user
-```
+export OPENAI_API_KEY=sk-...  # optional
 
-Optionally set OpenAI for AI responses:
-```
-export OPENAI_API_KEY=sk-...
-```
-
-## Run
-
-From this folder:
-```
 cd apps/support-chat
-n3 app.ai check
 n3 run app.ai
 ```
 
-Open the URL printed by the CLI. If needed:
+Open:
 ```
-http://127.0.0.1:7340/?page=SupportChat
-```
-
-## Testing
-```
-./smoke.sh
+http://localhost:7340/?page=SupportChat
 ```
 
-## Notes
-- KB entries are seeded inline on first run; no external data files are required.
-- Search is exact-match due to current DSL string constraints.
-- Upload UI is not available in the current UI grammar; the `process_upload` flow stores metadata if invoked via API/CLI.
+## Test
 
-## Good first issues
-- Add session renaming/editing.
-- Add a lightweight analytics page with counts by session.
-- Add “helpful” summaries for search results.
+```bash
+./tests/smoke.sh
+```
+
+## Screenshot
+(Optional: add image of app in browser)

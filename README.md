@@ -1,5 +1,20 @@
 # namel3ss-apps
-Real, production-quality applications built with the namel3ss AI-native language. Full working apps, agents, and demos showcasing deterministic AI, UI, memory, and tools.
+
+This repository contains demo and reference applications built using the [namel3ss](https://github.com/namel3ss-Ai/namel3ss) AI-native DSL.
 
 ## Apps
-- Support Chat: `apps/support-chat` - customer-support chat UI with persisted conversations and a local knowledge-base tool.
+
+### 📞 Support Chat
+A fully native, deterministic customer support assistant with:
+- Inline KB matching
+- Session history
+- Optional OpenAI fallback
+- UI feedback
+
+→ [apps/support-chat/README.md](apps/support-chat/README.md)
+
+## How to Contribute
+
+1. Clone this repo
+2. Install `namel3ss`: `pip install namel3ss`
+3. Navigate to an app and run: `n3 run app.ai`
