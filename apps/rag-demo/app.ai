@@ -1,0 +1,392 @@
+spec is "1.0"
+
+capabilities:
+  files
+  secrets
+
+packs:
+  "builtin.file"
+
+ui:
+  theme is "light"
+  accent color is "teal"
+  shape is "rounded"
+  density is "comfortable"
+  motion is "subtle"
+
+record "Document":
+  fields:
+    title is text must be present
+    content is text must be present
+    keywords is list must be present
+    rank is number must be present
+    tags is list
+    summary is text
+
+record "Query":
+  fields:
+    text is text must be present
+    keywords is list must be present
+
+record "KeywordPreset":
+  fields:
+    keywords is list must be present
+
+record "ScoredDocument":
+  fields:
+    document_id is number must be present
+    score is number must be present
+    matched_keywords is list must be present
+    rank is number must be present
+    reasons is text must be present
+
+record "SelectedDocument":
+  fields:
+    document_id is number must be present
+    title is text must be present
+    score is number must be present
+    matched_keywords is list must be present
+    rank is number must be present
+    reasons is text must be present
+    summary is text
+
+record "Prompt":
+  fields:
+    question is text must be present
+    payload is text must be present
+
+record "RetrievalSummary":
+  fields:
+    question is text must be present
+    query_keywords is list must be present
+    total_documents is number must be present
+    matched_documents is number must be present
+    selected_documents is number must be present
+    note is text must be present
+
+record "Answer":
+  fields:
+    question is text must be present
+    answer is text must be present
+
+tool "read text file":
+  implemented using python
+  input:
+    path is text
+    encoding is optional text
+  output:
+    text is text
+
+tool "write json file":
+  implemented using python
+  input:
+    path is text
+    data is json
+    create_dirs is optional boolean
+    encoding is optional text
+  output:
+    ok is boolean
+    path is text
+
+ai "assistant":
+  provider is "openai"
+  model is "gpt-4o-mini"
+  system_prompt is "You are a retrieval-augmented assistant. You will receive a JSON payload with keys 'question', 'query_keywords', and 'context'. Use only the provided context list to answer. If the context is empty or insufficient, respond with \"I don't know.\""
+  memory:
+    short_term is 0
+    semantic is false
+    profile is false
+
+flow "seed_documents":
+  find "Document" where true
+  let count is list length of document_results
+  if count is 0:
+    set state.seed_docs is list:
+      map:
+        "title" is "Namel3ss overview"
+        "content" is "Namel3ss is an AI-native DSL with deterministic execution, explicit AI boundaries, governed memory, and built-in explainability."
+        "keywords" is list:
+          "namel3ss"
+          "determinism"
+          "explainability"
+          "memory"
+        "rank" is 1
+        "tags" is list:
+          "platform"
+        "summary" is "What Namel3ss is and why it is deterministic."
+      map:
+        "title" is "RAG basics"
+        "content" is "Retrieval-augmented generation selects relevant documents, then uses them as context for the AI response."
+        "keywords" is list:
+          "rag"
+          "retrieval"
+          "context"
+        "rank" is 2
+        "tags" is list:
+          "retrieval"
+        "summary" is "RAG selects documents first, then answers from them."
+      map:
+        "title" is "Explainability"
+        "content" is "Use n3 explain to inspect each step, including retrieval, prompt construction, and AI output."
+        "keywords" is list:
+          "explainability"
+          "trace"
+          "inspect"
+        "rank" is 3
+        "tags" is list:
+          "observability"
+        "summary" is "Explainability makes every step visible and auditable."
+    for each doc in state.seed_docs:
+      create "Document" with doc as seeded
+  return "seeded"
+
+flow "ask":
+  delete "ScoredDocument" where true
+  delete "SelectedDocument" where true
+  delete "Prompt" where true
+  delete "Answer" where true
+  delete "RetrievalSummary" where true
+
+  set state.loading is true
+  set state.status.indexed is false
+  set state.status.no_matches is false
+  set state.status.answered is false
+  set state.status.error is false
+
+  try:
+    let user_message is input.message
+  with catch err:
+    set state.loading is false
+    return "missing_message"
+  if user_message is "":
+    set state.loading is false
+    return "empty_message"
+
+  try:
+    let existing_count is list length of state.chat.messages
+  with catch err:
+    set state.chat.messages is list:
+
+  set state.user_chat_row with:
+    "role" is "user"
+    "content" is user_message
+  set state.chat.messages is list append state.chat.messages with state.user_chat_row
+
+  find "KeywordPreset" where true
+  let preset_count is list length of keywordpreset_results
+  if preset_count is 0:
+    set state.query_keywords is list:
+  else:
+    let preset_index is preset_count - 1
+    let preset_row is list get keywordpreset_results at preset_index
+    set state.query_keywords is preset_row.keywords
+
+  set state.query_text is user_message
+  set state.query_row with:
+    text is state.query_text
+    keywords is state.query_keywords
+  create "Query" with state.query_row as query_entry
+
+  find "Document" where true
+  let doc_count is list length of document_results
+  if doc_count is greater than 0:
+    set state.status.indexed is true
+
+  set state.max_results is 3
+  set state.selected_count is 0
+  set state.matched_count is 0
+  set state.selected_context is list:
+
+  for each doc in document_results:
+    set state.matched_keywords is list:
+    for each doc_kw in doc.keywords:
+      for each query_kw in state.query_keywords:
+        if doc_kw is query_kw:
+          set state.matched_keywords is list append state.matched_keywords with doc_kw
+
+    let score is list length of state.matched_keywords
+    if score is greater than 0:
+      set state.matched_count is state.matched_count + 1
+
+    if score is greater than 0:
+      set state.reason_text is "Keyword overlap with the query."
+    else:
+      set state.reason_text is "No keyword overlap."
+
+    set state.scored_row with:
+      document_id is doc.rank
+      score is score
+      matched_keywords is state.matched_keywords
+      rank is doc.rank
+      reasons is state.reason_text
+    create "ScoredDocument" with state.scored_row as scored_entry
+
+    if score is greater than 0:
+      if state.selected_count is less than state.max_results:
+        set state.selected_row with:
+          document_id is doc.rank
+          title is doc.title
+          score is score
+          matched_keywords is state.matched_keywords
+          rank is doc.rank
+          reasons is state.reason_text
+          summary is doc.summary
+        create "SelectedDocument" with state.selected_row as selected_entry
+        set state.selected_count is state.selected_count + 1
+        set state.context_row with:
+          title is doc.title
+          content is doc.content
+          summary is doc.summary
+          tags is doc.tags
+          matched_keywords is state.matched_keywords
+          rank is doc.rank
+        set state.selected_context is list append state.selected_context with state.context_row
+
+  if state.selected_count is 0:
+    set state.status.no_matches is true
+
+  set state.prompt_payload with:
+    question is state.query_text
+    query_keywords is state.query_keywords
+    context is state.selected_context
+
+  let prompt_write is write json file:
+    path is ".namel3ss/runtime/rag_prompt.json"
+    data is state.prompt_payload
+    create_dirs is true
+
+  let prompt_file is read text file:
+    path is ".namel3ss/runtime/rag_prompt.json"
+  set state.prompt_json is prompt_file.text
+
+  set state.prompt_row with:
+    question is state.query_text
+    payload is state.prompt_json
+  create "Prompt" with state.prompt_row as prompt_entry
+
+  set state.summary_row with:
+    question is state.query_text
+    query_keywords is state.query_keywords
+    total_documents is doc_count
+    matched_documents is state.matched_count
+    selected_documents is state.selected_count
+    note is "Scores are keyword overlaps; rank is the deterministic tie-breaker."
+  create "RetrievalSummary" with state.summary_row as summary_entry
+
+  set state.secret_ok is false
+  try:
+    let api_key is secret("openai_api_key")
+    set state.secret_ok is true
+  with catch err:
+    set state.secret_ok is false
+
+  if state.secret_ok is false:
+    set state.answer_text is "Missing secret: openai_api_key."
+    set state.status.error is true
+  else:
+    ask ai "assistant" with input: state.prompt_json as reply
+    set state.answer_text is reply
+    set state.status.answered is true
+
+  set state.answer_row with:
+    question is state.query_text
+    answer is state.answer_text
+  create "Answer" with state.answer_row as answer_entry
+
+  set state.assistant_chat_row with:
+    "role" is "assistant"
+    "content" is state.answer_text
+  set state.chat.messages is list append state.chat.messages with state.assistant_chat_row
+
+  set state.loading is false
+  return state.answer_text
+
+page "home":
+  purpose is "Single-file, deterministic RAG demo built entirely in namel3ss."
+  title is "Deterministic RAG Demo"
+  row:
+    column:
+      section "Knowledge base":
+        card "Add document":
+          form is "Document":
+            fields:
+              field "title":
+                help is "Short title for display."
+              field "content":
+                help is "Full document text used as retrieval context."
+              field "keywords":
+                help is "List of exact keywords for deterministic matching."
+              field "rank":
+                help is "Deterministic tie-breaker (lower wins)."
+              field "tags":
+                help is "Optional list of tags."
+              field "summary":
+                help is "Optional short summary used in context."
+        button "Seed sample documents":
+          calls flow "seed_documents"
+        text is "Indexed" when is state.status.indexed
+        card "Stored documents":
+          table is "Document":
+            columns:
+              include rank
+              include title
+              include keywords
+            sort:
+              by is rank
+              order is "asc"
+
+      section "Query keywords":
+        text is "Set keywords once; the chat uses the latest keyword preset."
+        card "Keyword preset":
+          form is "KeywordPreset":
+            fields:
+              field "keywords":
+                help is "List of keywords that the retriever will match."
+
+      section "Scoring":
+        text is "Score = count of overlapping keywords. Rank breaks ties."
+        table is "ScoredDocument":
+          columns:
+            include document_id
+            include score
+            include matched_keywords
+            include rank
+            include reasons
+          empty_text is "No documents scored yet."
+    column:
+      section "Ask":
+        chat:
+          messages from is state.chat.messages
+          thinking when is state.loading
+          composer calls flow "ask"
+        text is "No matches" when is state.status.no_matches
+        text is "Answered" when is state.status.answered
+        text is "Missing secret: openai_api_key" when is state.status.error
+
+      section "Selected documents":
+        table is "SelectedDocument":
+          columns:
+            include rank
+            include title
+            include score
+            include matched_keywords
+            include reasons
+          empty_text is "No documents selected."
+
+      section "Retrieval summary":
+        list is "RetrievalSummary":
+          variant is "two_line"
+          item:
+            primary is note
+            secondary is question
+          empty_text is "No retrieval summary yet."
+
+      section "Prompt JSON":
+        text is "Raw JSON payload sent to the AI."
+        table is "Prompt":
+          columns:
+            include payload
+          empty_text is "No prompt yet."
+
+      section "Explain":
+        text is "Run: n3 explain to inspect retrieval, prompt JSON, and the AI response."

@@ -13,6 +13,15 @@ A fully native, deterministic customer support assistant with:
 
 → [apps/support-chat/README.md](apps/support-chat/README.md)
 
+### 📚 Deterministic RAG Demo
+A full Retrieval-Augmented Generation app in a single `.ai` file with:
+- Document ingestion
+- Deterministic retrieval
+- AI answers grounded in retrieved context
+- Explainable execution
+
+→ [apps/rag-demo/README.md](apps/rag-demo/README.md)
+
 ## How to Contribute
 
 1. Clone this repo
