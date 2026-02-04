@@ -1,77 +1,64 @@
-# Deterministic RAG Demo (namel3ss)
+# RAG Demo (namel3ss)
 
-A complete Retrieval-Augmented Generation demo built in a single `.ai` file. No Python glue, no frameworks, no hidden state.
+A complete, end-to-end Retrieval-Augmented Generation demo built for the namel3ss runtime. It uses only runtime pipelines for uploads, ingestion, retrieval, and answering. The UI exposes citations, PDF preview with highlights, and an explain view.
 
-## What this demo shows
-- 📄 Document ingestion via namel3ss records + UI form
-- 🔎 Deterministic retrieval (exact-match scoring, top-N selection)
-- 🤖 AI answers grounded in retrieved context
-- 🔍 End-to-end explainability with `n3 explain`
+## What This Demo Shows
+- Upload a PDF and ingest it with the runtime quality gate.
+- Ask questions in a chat UI.
+- Receive cited answers (citations are enforced by the runtime).
+- Click citations to open PDF page previews with highlight overlays.
+- Inspect a deterministic explain bundle for retrieval and answer validation.
 
-## Install namel3ss
+## Install / Upgrade namel3ss
 
-Use the latest namel3ss version from PyPI.
-
-Recommended install (isolated CLI):
-
-```bash
-python -m pip install -U pipx
-pipx install namel3ss
-pipx upgrade namel3ss
-```
-
-Verify:
+Install the exact version:
 
 ```bash
-n3 --version
+pip install namel3ss==0.1.0a13
 ```
 
-Alternative (venv / pip):
+Or upgrade to latest:
 
 ```bash
-python -m pip install -U namel3ss
-n3 --version
+pip install namel3ss --upgrade
 ```
 
-## Configure secrets
-
-This demo uses a namel3ss secret for the OpenAI key and the built-in OpenAI provider.
-
-```bash
-# namel3ss secret (used by secret("openai_api_key"))
-export N3_SECRET_OPENAI_API_KEY="sk-..."
-
-# provider key (used by the OpenAI provider)
-export NAMEL3SS_OPENAI_API_KEY="sk-..."
-# or: export OPENAI_API_KEY="sk-..."
-```
-
-## Run the demo
+## Run
 
 ```bash
 cd apps/rag-demo
-n3 run app.ai
+n3 studio app.ai
 ```
 
-Open:
+Studio launches and renders the app UI in the browser.
 
-```
-http://localhost:7340/?page=home
-```
+## How To Use
 
-## Inspect behavior
+1. Upload `assets/sample.pdf` using the Upload control.
+1. Click `Run ingestion`.
+1. Ask a question such as `runtime enforces citations`.
+1. Or ask `what does this demo show`.
+1. Review the answer and citations.
+1. Click `Open page` in a citation to preview the PDF and highlights.
+1. Scroll to the Explain section to inspect retrieval mode, candidate counts, and citation validation.
 
-After asking a question, run:
+## LLM Configuration (Runtime-Side)
+
+- The runtime reads LLM provider and model from environment configuration.
+- The app does not contain prompts or model tuning; the runtime constructs prompts and enforces citations.
+
+Common environment variables:
+- `N3_ANSWER_PROVIDER` and `N3_ANSWER_MODEL`
+- Provider keys such as `NAMEL3SS_OPENAI_API_KEY` (or `OPENAI_API_KEY`)
+
+Example (OpenAI):
 
 ```bash
-n3 explain
+export N3_ANSWER_PROVIDER=openai
+export N3_ANSWER_MODEL=gpt-4o-mini
+export NAMEL3SS_OPENAI_API_KEY="sk-..."
 ```
 
-You will see:
-- Which documents were scored and selected
-- The JSON prompt sent to the AI
-- The AI response
+## Testing Notes
 
-## Notes on retrieval
-
-Retrieval is deterministic and intentionally simple: a document scores if the question exactly matches the title or content. The first 3 matches (in record order) become the retrieved context.
+The smoke test runs deterministically without external network calls. It uses the retrieval pipeline to build a stable answer and citations for validation.

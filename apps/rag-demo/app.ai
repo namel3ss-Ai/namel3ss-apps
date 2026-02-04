@@ -1,392 +1,321 @@
 spec is "1.0"
 
 capabilities:
-  files
-  secrets
+  uploads
 
-packs:
-  "builtin.file"
-
-ui:
-  theme is "light"
-  accent color is "teal"
-  shape is "rounded"
-  density is "comfortable"
-  motion is "subtle"
+policy
+  allow ingestion.run
+  allow ingestion.review
+  allow ingestion.override
+  allow retrieval.include_warn
 
 record "Document":
   fields:
-    title is text must be present
-    content is text must be present
-    keywords is list must be present
-    rank is number must be present
-    tags is list
-    summary is text
+    document_id is text must be present
+    source_name is text must be present
+    upload_id is text must be present
+    status is text must be present
+    quality is text must be present
 
-record "Query":
+record "Question":
   fields:
-    text is text must be present
-    keywords is list must be present
-
-record "KeywordPreset":
-  fields:
-    keywords is list must be present
-
-record "ScoredDocument":
-  fields:
-    document_id is number must be present
-    score is number must be present
-    matched_keywords is list must be present
-    rank is number must be present
-    reasons is text must be present
-
-record "SelectedDocument":
-  fields:
-    document_id is number must be present
-    title is text must be present
-    score is number must be present
-    matched_keywords is list must be present
-    rank is number must be present
-    reasons is text must be present
-    summary is text
-
-record "Prompt":
-  fields:
-    question is text must be present
-    payload is text must be present
-
-record "RetrievalSummary":
-  fields:
-    question is text must be present
-    query_keywords is list must be present
-    total_documents is number must be present
-    matched_documents is number must be present
-    selected_documents is number must be present
-    note is text must be present
+    query is text must be present
 
 record "Answer":
   fields:
-    question is text must be present
-    answer is text must be present
+    query is text must be present
+    answer_text is text must be present
+    citations is json must be present
+    confidence is number must be present
+    source_count is number must be present
 
-tool "read text file":
-  implemented using python
-  input:
-    path is text
-    encoding is optional text
-  output:
-    text is text
+record "ExplainSummary":
+  fields:
+    query is text must be present
+    retrieval_mode is text must be present
+    candidate_count is number must be present
+    final_selection is json must be present
+    ordering is text must be present
+    prompt_hash is text must be present
+    citation_status is text must be present
+    citation_count is number must be present
+    unknown_citations is json must be present
 
-tool "write json file":
-  implemented using python
-  input:
-    path is text
-    data is json
-    create_dirs is optional boolean
-    encoding is optional text
-  output:
-    ok is boolean
-    path is text
+record "ExplainCandidate":
+  fields:
+    query is text must be present
+    order is number must be present
+    chunk_id is text must be present
+    ingestion_phase is text must be present
+    keyword_overlap is number must be present
+    page_number is number must be present
+    chunk_index is number must be present
+    decision is text must be present
+    reason is text must be present
 
-ai "assistant":
-  provider is "openai"
-  model is "gpt-4o-mini"
-  system_prompt is "You are a retrieval-augmented assistant. You will receive a JSON payload with keys 'question', 'query_keywords', and 'context'. Use only the provided context list to answer. If the context is empty or insufficient, respond with \"I don't know.\""
-  memory:
-    short_term is 0
-    semantic is false
-    profile is false
+flow "ingest_latest": requires true
+  set state.ingest.status is "idle"
+  set state.ingest.message is ""
 
-flow "seed_documents":
-  find "Document" where true
-  let count is list length of document_results
-  if count is 0:
-    set state.seed_docs is list:
-      map:
-        "title" is "Namel3ss overview"
-        "content" is "Namel3ss is an AI-native DSL with deterministic execution, explicit AI boundaries, governed memory, and built-in explainability."
-        "keywords" is list:
-          "namel3ss"
-          "determinism"
-          "explainability"
-          "memory"
-        "rank" is 1
-        "tags" is list:
-          "platform"
-        "summary" is "What Namel3ss is and why it is deterministic."
-      map:
-        "title" is "RAG basics"
-        "content" is "Retrieval-augmented generation selects relevant documents, then uses them as context for the AI response."
-        "keywords" is list:
-          "rag"
-          "retrieval"
-          "context"
-        "rank" is 2
-        "tags" is list:
-          "retrieval"
-        "summary" is "RAG selects documents first, then answers from them."
-      map:
-        "title" is "Explainability"
-        "content" is "Use n3 explain to inspect each step, including retrieval, prompt construction, and AI output."
-        "keywords" is list:
-          "explainability"
-          "trace"
-          "inspect"
-        "rank" is 3
-        "tags" is list:
-          "observability"
-        "summary" is "Explainability makes every step visible and auditable."
-    for each doc in state.seed_docs:
-      create "Document" with doc as seeded
-  return "seeded"
+  let upload_id is ""
+  let has_upload is false
+  try:
+    let intake is state.uploads.intake
+    let count is list length of intake
+    if count is greater than 0:
+      let last_index is count - 1
+      let last_upload is list get intake at last_index
+      set upload_id is last_upload.id
+      set has_upload is true
+  with catch err:
+    set has_upload is false
 
-flow "ask":
-  delete "ScoredDocument" where true
-  delete "SelectedDocument" where true
-  delete "Prompt" where true
-  delete "Answer" where true
-  delete "RetrievalSummary" where true
+  if has_upload is false:
+    set state.ingest.status is "no_upload"
+    set state.ingest.message is "Upload a PDF before ingesting."
+    return "no_upload"
 
+  let out is call pipeline "ingestion":
+    input:
+      upload_id is upload_id
+    output:
+      report
+      ingestion
+      index
+
+  let report is map get out key "report"
+  let ingestion_state is map get out key "ingestion"
+  let index_state is map get out key "index"
+  set state.ingestion is ingestion_state
+  set state.index is index_state
+  let provenance is map get report key "provenance"
+  let document_id is map get provenance key "document_id"
+  let source_name is map get provenance key "source_name"
+  let quality is map get report key "status"
+
+  delete "Document" where upload_id is upload_id
+  set state.doc_row with:
+    document_id is document_id
+    source_name is source_name
+    upload_id is upload_id
+    status is "indexed"
+    quality is quality
+  if quality is "block":
+    set state.doc_row.status is "blocked"
+  create "Document" with state.doc_row as doc_entry
+
+  set state.ingest.status is "ingested"
+  set state.ingest.message is "Ingestion complete."
+  set state.last_document_id is document_id
+  set state.last_source_name is source_name
+  return document_id
+
+flow "answer_question": requires true
+  set state.answer_error is ""
   set state.loading is true
-  set state.status.indexed is false
-  set state.status.no_matches is false
-  set state.status.answered is false
-  set state.status.error is false
 
   try:
-    let user_message is input.message
+    let q is input.message
   with catch err:
     set state.loading is false
     return "missing_message"
-  if user_message is "":
+  if q is "":
     set state.loading is false
     return "empty_message"
 
   try:
-    let existing_count is list length of state.chat.messages
+    let existing_messages is state.chat.messages
   with catch err:
     set state.chat.messages is list:
 
-  set state.user_chat_row with:
-    "role" is "user"
-    "content" is user_message
-  set state.chat.messages is list append state.chat.messages with state.user_chat_row
+  set state.user_msg with:
+    role is "user"
+    content is q
+  set state.chat.messages is list append state.chat.messages with state.user_msg
 
-  find "KeywordPreset" where true
-  let preset_count is list length of keywordpreset_results
-  if preset_count is 0:
-    set state.query_keywords is list:
-  else:
-    let preset_index is preset_count - 1
-    let preset_row is list get keywordpreset_results at preset_index
-    set state.query_keywords is preset_row.keywords
+  set state.question_row with:
+    query is q
+  create "Question" with state.question_row as question_entry
 
-  set state.query_text is user_message
-  set state.query_row with:
-    text is state.query_text
-    keywords is state.query_keywords
-  create "Query" with state.query_row as query_entry
+  delete "ExplainSummary" where true
+  delete "ExplainCandidate" where true
 
-  find "Document" where true
-  let doc_count is list length of document_results
-  if doc_count is greater than 0:
-    set state.status.indexed is true
+  let retrieval_out is call pipeline "retrieval":
+    input:
+      query is q
+      tier is "auto"
+    output:
+      report
 
-  set state.max_results is 3
-  set state.selected_count is 0
-  set state.matched_count is 0
-  set state.selected_context is list:
+  let retrieval_report is map get retrieval_out key "report"
+  let results is map get retrieval_report key "results"
+  let source_count is list length of results
 
-  for each doc in document_results:
-    set state.matched_keywords is list:
-    for each doc_kw in doc.keywords:
-      for each query_kw in state.query_keywords:
-        if doc_kw is query_kw:
-          set state.matched_keywords is list append state.matched_keywords with doc_kw
+  set state.result_chunk_ids is list:
+  for each res in results:
+    set state.result_chunk_ids is list append state.result_chunk_ids with res.chunk_id
 
-    let score is list length of state.matched_keywords
-    if score is greater than 0:
-      set state.matched_count is state.matched_count + 1
-
-    if score is greater than 0:
-      set state.reason_text is "Keyword overlap with the query."
-    else:
-      set state.reason_text is "No keyword overlap."
-
-    set state.scored_row with:
-      document_id is doc.rank
-      score is score
-      matched_keywords is state.matched_keywords
-      rank is doc.rank
-      reasons is state.reason_text
-    create "ScoredDocument" with state.scored_row as scored_entry
-
-    if score is greater than 0:
-      if state.selected_count is less than state.max_results:
-        set state.selected_row with:
-          document_id is doc.rank
-          title is doc.title
-          score is score
-          matched_keywords is state.matched_keywords
-          rank is doc.rank
-          reasons is state.reason_text
-          summary is doc.summary
-        create "SelectedDocument" with state.selected_row as selected_entry
-        set state.selected_count is state.selected_count + 1
-        set state.context_row with:
-          title is doc.title
-          content is doc.content
-          summary is doc.summary
-          tags is doc.tags
-          matched_keywords is state.matched_keywords
-          rank is doc.rank
-        set state.selected_context is list append state.selected_context with state.context_row
-
-  if state.selected_count is 0:
-    set state.status.no_matches is true
-
-  set state.prompt_payload with:
-    question is state.query_text
-    query_keywords is state.query_keywords
-    context is state.selected_context
-
-  let prompt_write is write json file:
-    path is ".namel3ss/runtime/rag_prompt.json"
-    data is state.prompt_payload
-    create_dirs is true
-
-  let prompt_file is read text file:
-    path is ".namel3ss/runtime/rag_prompt.json"
-  set state.prompt_json is prompt_file.text
-
-  set state.prompt_row with:
-    question is state.query_text
-    payload is state.prompt_json
-  create "Prompt" with state.prompt_row as prompt_entry
-
-  set state.summary_row with:
-    question is state.query_text
-    query_keywords is state.query_keywords
-    total_documents is doc_count
-    matched_documents is state.matched_count
-    selected_documents is state.selected_count
-    note is "Scores are keyword overlaps; rank is the deterministic tie-breaker."
-  create "RetrievalSummary" with state.summary_row as summary_entry
-
-  set state.secret_ok is false
+  let offline is false
   try:
-    let api_key is secret("openai_api_key")
-    set state.secret_ok is true
+    let offline is input.offline
   with catch err:
-    set state.secret_ok is false
+    set offline is false
 
-  if state.secret_ok is false:
-    set state.answer_text is "Missing secret: openai_api_key."
-    set state.status.error is true
+  if offline is true:
+    set state.answer_text is "See sources."
+    set state.answer_citations is state.result_chunk_ids
+    if source_count is greater than 0:
+      set state.confidence is 1
+    else:
+      set state.confidence is 0
+    set state.source_count is source_count
   else:
-    ask ai "assistant" with input: state.prompt_json as reply
-    set state.answer_text is reply
-    set state.status.answered is true
+    let answer_out is call pipeline "answer":
+      input:
+        query is q
+        tier is "auto"
+      output:
+        report
+
+    let answer_report is map get answer_out key "report"
+    set state.answer_text is map get answer_report key "answer_text"
+    set state.answer_citations is map get answer_report key "citations"
+    set state.confidence is map get answer_report key "confidence"
+    set state.source_count is map get answer_report key "source_count"
+
+    try:
+      let explain is map get answer_report key "explain"
+      let validation is map get explain key "answer_validation"
+      set state.summary_row with:
+        query is q
+        retrieval_mode is map get explain key "retrieval_mode"
+        candidate_count is map get explain key "candidate_count"
+        final_selection is map get explain key "final_selection"
+        ordering is map get explain key "ordering"
+        prompt_hash is map get validation key "prompt_hash"
+        citation_status is map get validation key "status"
+        citation_count is map get validation key "citation_count"
+        unknown_citations is map get validation key "unknown_citations"
+      create "ExplainSummary" with state.summary_row as explain_summary
+
+      let candidates is map get explain key "candidates"
+      set state.order_index is 0
+      for each cand in candidates:
+        set state.order_index is state.order_index + 1
+        set state.candidate_row with:
+          query is q
+          order is state.order_index
+          chunk_id is map get cand key "chunk_id"
+          ingestion_phase is map get cand key "ingestion_phase"
+          keyword_overlap is map get cand key "keyword_overlap"
+          page_number is map get cand key "page_number"
+          chunk_index is map get cand key "chunk_index"
+          decision is map get cand key "decision"
+          reason is map get cand key "reason"
+        create "ExplainCandidate" with state.candidate_row as explain_candidate
+    with catch err:
+      set state.answer_error is "Explain bundle unavailable."
+
+  set state.chat.citations is list:
+  for each cid in state.answer_citations:
+    set state.citation_row with:
+      title is "Source"
+      chunk_id is cid
+      source_id is cid
+      snippet is ""
+    set state.found is false
+    for each res in results:
+      if state.found is false:
+        if res.chunk_id is cid:
+          set state.found is true
+          set state.citation_row with:
+            title is res.source_name
+            chunk_id is res.chunk_id
+            document_id is res.document_id
+            page_number is res.page_number
+            snippet is res.text
+    set state.chat.citations is list append state.chat.citations with state.citation_row
 
   set state.answer_row with:
-    question is state.query_text
-    answer is state.answer_text
+    query is q
+    answer_text is state.answer_text
+    citations is state.answer_citations
+    confidence is state.confidence
+    source_count is state.source_count
   create "Answer" with state.answer_row as answer_entry
 
-  set state.assistant_chat_row with:
-    "role" is "assistant"
-    "content" is state.answer_text
-  set state.chat.messages is list append state.chat.messages with state.assistant_chat_row
+  set state.assistant_msg with:
+    role is "assistant"
+    content is state.answer_text
+  set state.chat.messages is list append state.chat.messages with state.assistant_msg
 
   set state.loading is false
   return state.answer_text
 
-page "home":
-  purpose is "Single-file, deterministic RAG demo built entirely in namel3ss."
-  title is "Deterministic RAG Demo"
+page "RAG Demo":
+  title is "RAG Demo"
+  text is "Upload a PDF, ingest it, ask questions, and verify answers with citations."
+
   row:
     column:
-      section "Knowledge base":
-        card "Add document":
-          form is "Document":
-            fields:
-              field "title":
-                help is "Short title for display."
-              field "content":
-                help is "Full document text used as retrieval context."
-              field "keywords":
-                help is "List of exact keywords for deterministic matching."
-              field "rank":
-                help is "Deterministic tie-breaker (lower wins)."
-              field "tags":
-                help is "Optional list of tags."
-              field "summary":
-                help is "Optional short summary used in context."
-        button "Seed sample documents":
-          calls flow "seed_documents"
-        text is "Indexed" when is state.status.indexed
-        card "Stored documents":
-          table is "Document":
-            columns:
-              include rank
-              include title
-              include keywords
-            sort:
-              by is rank
-              order is "asc"
-
-      section "Query keywords":
-        text is "Set keywords once; the chat uses the latest keyword preset."
-        card "Keyword preset":
-          form is "KeywordPreset":
-            fields:
-              field "keywords":
-                help is "List of keywords that the retriever will match."
-
-      section "Scoring":
-        text is "Score = count of overlapping keywords. Rank breaks ties."
-        table is "ScoredDocument":
+      section "Upload / Ingest":
+        upload intake
+        button "Run ingestion":
+          calls flow "ingest_latest"
+        table is "Document":
           columns:
-            include document_id
-            include score
-            include matched_keywords
-            include rank
-            include reasons
-          empty_text is "No documents scored yet."
+            include source_name
+            include upload_id
+            include status
+            include quality
+          sort:
+            by is upload_id
+            order is "asc"
+          empty_text is "No documents ingested yet."
+
+      section "Open source page":
+        text is "Use the Open page button in citations to preview the PDF and highlights."
+
+      section "Explain":
+        text is "Explain is read-only and deterministic for the latest answer."
+        table is "ExplainSummary":
+          columns:
+            include retrieval_mode
+            include candidate_count
+            include ordering
+            include prompt_hash
+            include citation_status
+            include citation_count
+          empty_text is "No explain data yet."
+        table is "ExplainCandidate":
+          columns:
+            include order
+            include chunk_id
+            include ingestion_phase
+            include keyword_overlap
+            include page_number
+            include decision
+            include reason
+          sort:
+            by is order
+            order is "asc"
+          empty_text is "No candidate data yet."
+
     column:
       section "Ask":
+        text is "Ask a question about the uploaded document."
+
+      section "Answer + citations":
         chat:
           messages from is state.chat.messages
           thinking when is state.loading
-          composer calls flow "ask"
-        text is "No matches" when is state.status.no_matches
-        text is "Answered" when is state.status.answered
-        text is "Missing secret: openai_api_key" when is state.status.error
+          composer calls flow "answer_question"
+          citations from is state.chat.citations
 
-      section "Selected documents":
-        table is "SelectedDocument":
+      section "Answers":
+        table is "Answer":
           columns:
-            include rank
-            include title
-            include score
-            include matched_keywords
-            include reasons
-          empty_text is "No documents selected."
-
-      section "Retrieval summary":
-        list is "RetrievalSummary":
-          variant is "two_line"
-          item:
-            primary is note
-            secondary is question
-          empty_text is "No retrieval summary yet."
-
-      section "Prompt JSON":
-        text is "Raw JSON payload sent to the AI."
-        table is "Prompt":
-          columns:
-            include payload
-          empty_text is "No prompt yet."
-
-      section "Explain":
-        text is "Run: n3 explain to inspect retrieval, prompt JSON, and the AI response."
+            include query
+            include source_count
+            include confidence
+          empty_text is "No answers yet."
