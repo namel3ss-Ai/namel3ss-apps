@@ -253,69 +253,17 @@ flow "answer_question": requires true
   return state.answer_text
 
 page "RAG Demo":
-  title is "RAG Demo"
-  text is "Upload a PDF, ingest it, ask questions, and verify answers with citations."
+  title is "RAG Chat"
+  text is "Upload a PDF, run ingestion, then chat."
 
-  row:
-    column:
-      section "Upload / Ingest":
-        upload intake
-        button "Run ingestion":
-          calls flow "ingest_latest"
-        table is "Document":
-          columns:
-            include source_name
-            include upload_id
-            include status
-            include quality
-          sort:
-            by is upload_id
-            order is "asc"
-          empty_text is "No documents ingested yet."
+  section "Upload PDF":
+    upload intake
+    button "Run ingestion":
+      calls flow "ingest_latest"
 
-      section "Open source page":
-        text is "Use the Open page button in citations to preview the PDF and highlights."
-
-      section "Explain":
-        text is "Explain is read-only and deterministic for the latest answer."
-        table is "ExplainSummary":
-          columns:
-            include retrieval_mode
-            include candidate_count
-            include ordering
-            include prompt_hash
-            include citation_status
-            include citation_count
-          empty_text is "No explain data yet."
-        table is "ExplainCandidate":
-          columns:
-            include order
-            include chunk_id
-            include ingestion_phase
-            include keyword_overlap
-            include page_number
-            include decision
-            include reason
-          sort:
-            by is order
-            order is "asc"
-          empty_text is "No candidate data yet."
-
-    column:
-      section "Ask":
-        text is "Ask a question about the uploaded document."
-
-      section "Answer + citations":
-        chat:
-          messages from is state.chat.messages
-          thinking when is state.loading
-          composer calls flow "answer_question"
-          citations from is state.chat.citations
-
-      section "Answers":
-        table is "Answer":
-          columns:
-            include query
-            include source_count
-            include confidence
-          empty_text is "No answers yet."
+  section "Chat":
+    chat:
+      messages from is state.chat.messages
+      thinking when is state.loading
+      composer calls flow "answer_question"
+      citations from is state.chat.citations
