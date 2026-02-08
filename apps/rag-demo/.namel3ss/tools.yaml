@@ -1,7 +1,0 @@
-tools:
-  "normalize_query_text":
-    kind: "python"
-    entry: "tools.normalize_query_text:run"
-  "extract_query_keywords":
-    kind: "python"
-    entry: "tools.extract_query_keywords:run"

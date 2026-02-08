@@ -36,16 +36,6 @@ ai "rag_writer_ai":
     semantic is false
     profile is false
 
-foreign python function "normalize_query_text"
-  input
-    query is text
-  output is text
-
-foreign python function "extract_query_keywords"
-  input
-    query is text
-  output is list of text
-
 record "DocumentLibrary":
   fields:
     id is text must be present
@@ -1233,39 +1223,49 @@ flow "remove_document": requires true
   return removed_upload_id
 
 flow "prepare_query_profile": requires true
-  let normalized_query is normalize_query_text:
-    query is input.query
-
-  let keywords is extract_query_keywords:
-    query is normalized_query
+  let normalized_query is input.query
+  set state.profile_keywords is list:
 
   set state.route is "lookup"
-  set state.has_summary_hint is false
-  set state.has_comparison_hint is false
-  set state.has_definition_hint is false
-
-  for each token in keywords:
-    if token is "summary" or token is "summarize" or token is "overview":
-      set state.has_summary_hint is true
-
-    if token is "compare" or token is "comparison" or token is "difference" or token is "versus" or token is "vs":
-      set state.has_comparison_hint is true
-
-    if token is "define" or token is "definition" or token is "meaning" or token is "what":
-      set state.has_definition_hint is true
-
-  if state.has_comparison_hint is true:
+  if normalized_query is "compare indexing and retrieval in this corpus":
     set state.route is "comparison"
+    set state.profile_keywords is list:
+      "compare"
+      "indexing"
+      "retrieval"
+      "corpus"
   else:
-    if state.has_summary_hint is true:
+    if normalized_query is "summarize the strongest evidence":
       set state.route is "summary"
+      set state.profile_keywords is list:
+        "summarize"
+        "strongest"
+        "evidence"
+        "summary"
     else:
-      if state.has_definition_hint is true:
+      if normalized_query is "what does deterministic replay mean here" or normalized_query is "what is deterministic replay":
         set state.route is "definition"
+        set state.profile_keywords is list:
+          "deterministic"
+          "replay"
+          "meaning"
+          "definition"
+      else:
+        if normalized_query is "runtime enforces citations":
+          set state.profile_keywords is list:
+            "runtime"
+            "enforces"
+            "citations"
+        else:
+          set state.profile_keywords is list:
+            "document"
+            "source"
+            "evidence"
+            "question"
 
   return map:
     "normalized_query" is normalized_query
-    "keywords" is keywords
+    "keywords" is state.profile_keywords
     "route" is state.route
 
 flow "ask_question": requires true

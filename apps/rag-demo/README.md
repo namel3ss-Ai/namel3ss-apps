@@ -4,6 +4,7 @@ This demo now runs end-to-end in **Namel3ss**:
 
 - Backend logic (ingestion, retrieval, ranking, answer generation) in `app.ai`
 - Frontend UI (layout, chat, uploads, citations, diagnostics) in `app.ai`
+- Query profiling and routing in `app.ai` (no Python helper tools)
 
 No external frontend is required for normal use.
 
