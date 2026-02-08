@@ -1,0 +1,70 @@
+{
+  "page_slug": "rag_demo",
+  "layout_slots": [
+    "drawer_right",
+    "footer",
+    "header",
+    "main",
+    "sidebar_left"
+  ],
+  "diagnostics_blocks": 4,
+  "upload_request": {
+    "name": "documents",
+    "accept": [
+      "application/pdf",
+      "text/plain"
+    ],
+    "multiple": true,
+    "required": false,
+    "label": "Add Documents",
+    "preview": true
+  },
+  "theme_name": "modern",
+  "theme_css_hash": "3e984ad608356d2e0e4919f4799aaa3b583acf715e556245a88e379ac28060f1",
+  "has_source_preview_component": false,
+  "scope_selector": {
+    "options_source": "state.scope.options",
+    "active_source": "state.scope.active"
+  },
+  "chats": [
+    {
+      "style": "bubbles",
+      "show_avatars": true,
+      "group_messages": true,
+      "actions": [
+        "copy",
+        "expand",
+        "view_sources"
+      ],
+      "attachments": true,
+      "streaming": false
+    },
+    {
+      "style": "bubbles",
+      "show_avatars": true,
+      "group_messages": true,
+      "actions": [
+        "copy",
+        "expand",
+        "view_sources"
+      ],
+      "attachments": true,
+      "streaming": true
+    }
+  ],
+  "composer_action": {
+    "id": "page.rag_demo.composer.4.0.1.composer",
+    "type": "call_flow",
+    "flow": "ask_question"
+  },
+  "clear_drawer_action": {
+    "id": "page.rag_demo.button.reset_source_drawer",
+    "type": "call_flow",
+    "flow": "clear_sources_drawer"
+  },
+  "upload_actions": {
+    "select": "upload_select",
+    "clear": "upload_clear",
+    "ingestion": "ingestion_run"
+  }
+}

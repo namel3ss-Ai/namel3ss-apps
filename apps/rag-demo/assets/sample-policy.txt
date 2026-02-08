@@ -1,0 +1,5 @@
+Policy Handbook
+
+Deterministic replay means repeated runs produce the same candidate ordering.
+Trust badges are shown only when claims can be tied to known citations.
+Diagnostics belong in debug surfaces, not in the default product UI.

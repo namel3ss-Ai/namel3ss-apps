@@ -1,9 +1,8 @@
-.namel3ss/*
-!.namel3ss/tools.yaml
-__pycache__/
-.pytest_cache/
-.venv/
 .env
-data/*
-!data/.gitkeep
-eval/report.json
+.env.local
+.env.development
+.env.test
+
+.namel3ss/
+__pycache__/
+*.pyc
