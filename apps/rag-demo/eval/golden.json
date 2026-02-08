@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "notes": [
+    "Cases must stay deterministic and offline-safe.",
+    "Use expected_answer_themes and expected_citations to avoid brittle exact-text matching."
+  ],
+  "cases": [
+    {
+      "id": "runtime-citations",
+      "question": "runtime enforces citations",
+      "expected_answer_themes": [
+        "runtime",
+        "citations",
+        "deterministic"
+      ],
+      "expected_citations": [
+        {
+          "source_contains": "sample",
+          "page": 1
+        }
+      ],
+      "allowed_ambiguity": "Answer wording may vary in online mode; citation provenance must remain stable.",
+      "expect_no_source": false
+    },
+    {
+      "id": "summary-evidence",
+      "question": "summarize the strongest evidence in this demo",
+      "expected_answer_themes": [
+        "ingestion",
+        "retrieval",
+        "explain"
+      ],
+      "expected_citations": [
+        {
+          "source_contains": "sample",
+          "page": 1
+        }
+      ],
+      "allowed_ambiguity": "Summary style can differ, but cited evidence should map to ingested chunks.",
+      "expect_no_source": false
+    },
+    {
+      "id": "no-support",
+      "question": "what is the capital of france",
+      "expected_answer_themes": [],
+      "expected_citations": [],
+      "allowed_ambiguity": "No-source path should be explicit and actionable.",
+      "expect_no_source": true
+    }
+  ]
+}

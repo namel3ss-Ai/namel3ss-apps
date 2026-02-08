@@ -1,0 +1,41 @@
+{
+  "checks": [
+    {
+      "check_id": "constitution_present",
+      "passed": true,
+      "principle": "Constitution integrity",
+      "reason": "Constitution file present with required sections.",
+      "recovery": "None"
+    },
+    {
+      "check_id": "deterministic_replay_required",
+      "passed": true,
+      "principle": "Article I: Determinism default",
+      "reason": "deterministic_replay metric is 1.0000",
+      "recovery": "None"
+    },
+    {
+      "check_id": "citation_contract_required",
+      "passed": true,
+      "principle": "Article III: Citation-first answers",
+      "reason": "citation_coverage and citation_correctness are both 1.0000",
+      "recovery": "None"
+    },
+    {
+      "check_id": "nondeterministic_tokens_forbidden",
+      "passed": true,
+      "principle": "Article I: No nondeterminism without explicit opt-in",
+      "reason": "No forbidden nondeterministic tokens detected.",
+      "recovery": "None"
+    },
+    {
+      "check_id": "explicit_failure_modes_required",
+      "passed": true,
+      "principle": "Article VI: No silent degradation",
+      "reason": "Failure modes and notices are explicit in app contract.",
+      "recovery": "None"
+    }
+  ],
+  "status": "pass",
+  "violations": []
+}

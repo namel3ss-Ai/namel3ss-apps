@@ -1,0 +1,6 @@
+.namel3ss/
+__pycache__/
+.pytest_cache/
+.env
+data/
+eval/report.json

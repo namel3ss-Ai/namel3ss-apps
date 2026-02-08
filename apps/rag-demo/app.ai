@@ -2,6 +2,44 @@ spec is "1.0"
 
 capabilities:
   uploads
+  custom_theme
+
+ui:
+  theme is "white"
+  accent color is "neutral"
+  density is "compact"
+  motion is "none"
+  shape is "square"
+  surface is "outlined"
+
+theme:
+  density is "compact"
+  motion is "none"
+  shape is "square"
+  surface is "outlined"
+  tokens:
+    color.background is "#FFFFFF"
+    color.surface is "#FFFFFF"
+    color.on_background is "#000000"
+    color.on_surface is "#000000"
+    color.primary is "#000000"
+    color.primary.light is "#1A1A1A"
+    color.primary.dark is "#000000"
+    color.on_primary is "#FFFFFF"
+    color.secondary is "#FFFFFF"
+    color.secondary.light is "#FFFFFF"
+    color.secondary.dark is "#B3B3B3"
+    color.on_secondary is "#4D4D4D"
+    color.neutral is "#808080"
+    color.error is "#000000"
+    color.on_error is "#FFFFFF"
+    color.success is "#000000"
+    color.on_success is "#FFFFFF"
+    color.warning is "#000000"
+    color.on_warning is "#FFFFFF"
+    color.border_muted is "#CCCCCC"
+    color.disabled is "#B3B3B3"
+    color.muted is "#666666"
 
 policy
   allow ingestion.run
@@ -9,37 +47,125 @@ policy
   allow ingestion.override
   allow retrieval.include_warn
 
-record "Document":
+foreign python function "normalize_query_text"
+  input
+    query is text
+  output is text
+
+foreign python function "extract_query_keywords"
+  input
+    query is text
+  output is list of text
+
+record "DocumentLibrary":
   fields:
+    id is text must be present
+    upload_id is text must be present
     document_id is text must be present
     source_name is text must be present
-    upload_id is text must be present
+    source_type is text must be present
     status is text must be present
     quality is text must be present
+    selected is boolean must be present
+    status_label is text must be present
+    selection_label is text must be present
+    weight is number must be present
+    tag is text must be present
+    quality_note is text must be present
+
+record "ExampleQuestion":
+  fields:
+    id is number must be present
+    query is text must be present
 
 record "Question":
   fields:
+    id is number must be present
     query is text must be present
+    source_scope is text must be present
+
+record "QueryProfile":
+  fields:
+    id is number must be present
+    raw_query is text must be present
+    normalized_query is text must be present
+    route is text must be present
+    keywords is json must be present
+    active_documents is json must be present
 
 record "Answer":
   fields:
+    id is number must be present
     query is text must be present
     answer_text is text must be present
     citations is json must be present
     confidence is number must be present
     source_count is number must be present
+    mode is text must be present
+
+record "CitationCard":
+  fields:
+    id is number must be present
+    answer_id is number must be present
+    source_title is text must be present
+    chunk_id is text must be present
+    source_name is text must be present
+    document_id is text must be present
+    page_number is number must be present
+    page_label is text must be present
+    snippet is text must be present
+
+record "RetrievalCandidate":
+  fields:
+    query_id is number must be present
+    rank is number must be present
+    chunk_id is text must be present
+    source_name is text must be present
+    page_number is number must be present
+    chunk_index is number must be present
+    ingestion_phase is text must be present
+    tier is text must be present
+    semantic_rank is number must be present
+    lexical_rank is number must be present
+    lexical_hits is number must be present
+    source_weight is number must be present
+    merged_score is number must be present
+    decision is text must be present
+    reason is text must be present
+    snippet is text must be present
+
+record "RankingDecision":
+  fields:
+    query_id is number must be present
+    rank is number must be present
+    chunk_id is text must be present
+    tier is text must be present
+    semantic_rank is number must be present
+    lexical_rank is number must be present
+    lexical_hits is number must be present
+    source_weight is number must be present
+    merged_score is number must be present
+    selected is boolean must be present
+    reason is text must be present
 
 record "ExplainSummary":
   fields:
     query is text must be present
     retrieval_mode is text must be present
+    route is text must be present
     candidate_count is number must be present
+    semantic_candidate_count is number must be present
+    lexical_candidate_count is number must be present
     final_selection is json must be present
     ordering is text must be present
+    rerank_policy is text must be present
+    expansion_mode is text must be present
+    chunking_config is text must be present
     prompt_hash is text must be present
     citation_status is text must be present
     citation_count is number must be present
     unknown_citations is json must be present
+    provider_mode is text must be present
 
 record "ExplainCandidate":
   fields:
@@ -53,27 +179,597 @@ record "ExplainCandidate":
     decision is text must be present
     reason is text must be present
 
-flow "ingest_latest": requires true
-  set state.ingest.status is "idle"
-  set state.ingest.message is ""
+record "Notice":
+  fields:
+    id is text must be present
+    message is text must be present
 
-  let upload_id is ""
-  let has_upload is false
+contract flow "seed_examples":
+  input:
+  output:
+    status is text
+
+contract flow "sync_library":
+  input:
+  output:
+    status is text
+
+contract flow "prepare_query_profile":
+  input:
+    query is text
+  output:
+    normalized_query is text
+    keywords is json
+    route is text
+
+contract flow "ingest_selected":
+  input:
+  output:
+    status is text
+
+contract flow "ask_question":
+  input:
+    message is text
+    offline is boolean
+  output:
+    answer_text is text
+    mode is text
+
+flow "seed_examples": requires true
+  find "ExampleQuestion" where true
+  let example_count is list length of examplequestion_results
+  if example_count is 0:
+    set state.example_1 with:
+      id is 1
+      query is "runtime enforces citations"
+    create "ExampleQuestion" with state.example_1 as example_1_entry
+
+    set state.example_2 with:
+      id is 2
+      query is "summarize the strongest evidence"
+    create "ExampleQuestion" with state.example_2 as example_2_entry
+
+    set state.example_3 with:
+      id is 3
+      query is "compare indexing and retrieval in this corpus"
+    create "ExampleQuestion" with state.example_3 as example_3_entry
+
+    set state.example_4 with:
+      id is 4
+      query is "what does deterministic replay mean here"
+    create "ExampleQuestion" with state.example_4 as example_4_entry
+
+  return map:
+    "status" is "ok"
+
+flow "sync_library": requires true
+  let seed_run is call flow "seed_examples":
+    input:
+    output:
+      status
+
+  let uploads is list:
   try:
-    let intake is state.uploads.intake
-    let count is list length of intake
-    if count is greater than 0:
-      let last_index is count - 1
-      let last_upload is list get intake at last_index
-      set upload_id is last_upload.id
-      set has_upload is true
+    let uploads is state.uploads.intake
   with catch err:
-    set has_upload is false
+    set uploads is list:
 
-  if has_upload is false:
-    set state.ingest.status is "no_upload"
-    set state.ingest.message is "Upload a PDF before ingesting."
-    return "no_upload"
+  let upload_count is list length of uploads
+  if upload_count is 0:
+    delete "Notice" where true
+    set state.notice_row with:
+      id is "current"
+      message is "Start by uploading a PDF, Markdown, or text file."
+    create "Notice" with state.notice_row as notice_entry
+    return map:
+      "status" is "no_upload"
+
+  for each file in uploads:
+    let upload_id is file.id
+    find "DocumentLibrary" where upload_id is upload_id
+    let existing_count is list length of documentlibrary_results
+    if existing_count is 0:
+      let source_name is upload_id
+      try:
+        let source_name is file.name
+      with catch err:
+        set source_name is upload_id
+
+      let source_type is "PDF"
+      try:
+        let raw_source_type is file.content_type
+        if raw_source_type is "application/pdf":
+          set source_type is "PDF"
+        else:
+          if raw_source_type is "text/markdown":
+            set source_type is "Markdown"
+          else:
+            if raw_source_type is "text/plain":
+              set source_type is "Text/Snapshot"
+            else:
+              set source_type is raw_source_type
+      with catch err:
+        set source_type is "PDF"
+
+      set state.library_row with:
+        id is upload_id
+        upload_id is upload_id
+        document_id is upload_id
+        source_name is source_name
+        source_type is source_type
+        status is "uploaded"
+        quality is "pending"
+        selected is true
+        status_label is "Uploaded • " + source_type
+        selection_label is "Active"
+        weight is 1
+        tag is "general"
+        quality_note is "Upload complete. Index this source to make it searchable."
+      create "DocumentLibrary" with state.library_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Library updated. Index your selected sources, then ask."
+  create "Notice" with state.notice_row as notice_entry
+  return map:
+    "status" is "ok"
+
+flow "select_document": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    let selected is false
+    if doc.upload_id is selected_upload_id:
+      set selected is true
+
+    set state.selection_label is "Inactive"
+    if selected is true:
+      set state.selection_label is "Active"
+
+    set state.doc_row with:
+      id is doc.id
+      upload_id is doc.upload_id
+      document_id is doc.document_id
+      source_name is doc.source_name
+      source_type is doc.source_type
+      status is doc.status
+      quality is doc.quality
+      selected is selected
+      status_label is doc.status_label
+      selection_label is state.selection_label
+      weight is doc.weight
+      tag is doc.tag
+      quality_note is doc.quality_note
+    create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Focused search on one source."
+  create "Notice" with state.notice_row as notice_entry
+  return selected_upload_id
+
+flow "add_document_selection": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    let selected is doc.selected
+    if doc.upload_id is selected_upload_id:
+      set selected is true
+
+    set state.selection_label is "Inactive"
+    if selected is true:
+      set state.selection_label is "Active"
+
+    set state.doc_row with:
+      id is doc.id
+      upload_id is doc.upload_id
+      document_id is doc.document_id
+      source_name is doc.source_name
+      source_type is doc.source_type
+      status is doc.status
+      quality is doc.quality
+      selected is selected
+      status_label is doc.status_label
+      selection_label is state.selection_label
+      weight is doc.weight
+      tag is doc.tag
+      quality_note is doc.quality_note
+    create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Source added to search scope."
+  create "Notice" with state.notice_row as notice_entry
+  return selected_upload_id
+
+flow "remove_document_selection": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    let selected is doc.selected
+    if doc.upload_id is selected_upload_id:
+      set selected is false
+
+    set state.selection_label is "Inactive"
+    if selected is true:
+      set state.selection_label is "Active"
+
+    set state.doc_row with:
+      id is doc.id
+      upload_id is doc.upload_id
+      document_id is doc.document_id
+      source_name is doc.source_name
+      source_type is doc.source_type
+      status is doc.status
+      quality is doc.quality
+      selected is selected
+      status_label is doc.status_label
+      selection_label is state.selection_label
+      weight is doc.weight
+      tag is doc.tag
+      quality_note is doc.quality_note
+    create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Source removed from search scope."
+  create "Notice" with state.notice_row as notice_entry
+  return selected_upload_id
+
+flow "select_tag_scope": requires true
+  try:
+    let target_tag is input.row.tag
+  with catch err:
+    return "missing_tag"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    let selected is false
+    if doc.tag is target_tag:
+      set selected is true
+
+    set state.selection_label is "Inactive"
+    if selected is true:
+      set state.selection_label is "Active"
+
+    set state.doc_row with:
+      id is doc.id
+      upload_id is doc.upload_id
+      document_id is doc.document_id
+      source_name is doc.source_name
+      source_type is doc.source_type
+      status is doc.status
+      quality is doc.quality
+      selected is selected
+      status_label is doc.status_label
+      selection_label is state.selection_label
+      weight is doc.weight
+      tag is doc.tag
+      quality_note is doc.quality_note
+    create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Search scope filtered by tag."
+  create "Notice" with state.notice_row as notice_entry
+  return target_tag
+
+flow "tag_document_product": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is upload_id
+
+  set state.doc_row with:
+    id is doc.id
+    upload_id is doc.upload_id
+    document_id is doc.document_id
+    source_name is doc.source_name
+    source_type is doc.source_type
+    status is doc.status
+    quality is doc.quality
+    selected is doc.selected
+    status_label is doc.status_label
+    selection_label is doc.selection_label
+    weight is doc.weight
+    tag is "product"
+    quality_note is doc.quality_note
+  create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Tag set to product."
+  create "Notice" with state.notice_row as notice_entry
+  return "ok"
+
+flow "tag_document_policy": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is upload_id
+
+  set state.doc_row with:
+    id is doc.id
+    upload_id is doc.upload_id
+    document_id is doc.document_id
+    source_name is doc.source_name
+    source_type is doc.source_type
+    status is doc.status
+    quality is doc.quality
+    selected is doc.selected
+    status_label is doc.status_label
+    selection_label is doc.selection_label
+    weight is doc.weight
+    tag is "policy"
+    quality_note is doc.quality_note
+  create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Tag set to policy."
+  create "Notice" with state.notice_row as notice_entry
+  return "ok"
+
+flow "tag_document_general": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is upload_id
+
+  set state.doc_row with:
+    id is doc.id
+    upload_id is doc.upload_id
+    document_id is doc.document_id
+    source_name is doc.source_name
+    source_type is doc.source_type
+    status is doc.status
+    quality is doc.quality
+    selected is doc.selected
+    status_label is doc.status_label
+    selection_label is doc.selection_label
+    weight is doc.weight
+    tag is "general"
+    quality_note is doc.quality_note
+  create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Tag set to general."
+  create "Notice" with state.notice_row as notice_entry
+  return "ok"
+
+flow "increase_document_weight": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  set state.new_weight is doc.weight + 1
+  if state.new_weight is greater than 3:
+    set state.new_weight is 3
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  set state.doc_row with:
+    id is doc.id
+    upload_id is doc.upload_id
+    document_id is doc.document_id
+    source_name is doc.source_name
+    source_type is doc.source_type
+    status is doc.status
+    quality is doc.quality
+    selected is doc.selected
+    status_label is doc.status_label
+    selection_label is doc.selection_label
+    weight is state.new_weight
+    tag is doc.tag
+    quality_note is doc.quality_note
+  create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Source priority increased."
+  create "Notice" with state.notice_row as notice_entry
+  return "ok"
+
+flow "decrease_document_weight": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  set state.new_weight is doc.weight - 1
+  if state.new_weight is less than 1:
+    set state.new_weight is 1
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  set state.doc_row with:
+    id is doc.id
+    upload_id is doc.upload_id
+    document_id is doc.document_id
+    source_name is doc.source_name
+    source_type is doc.source_type
+    status is doc.status
+    quality is doc.quality
+    selected is doc.selected
+    status_label is doc.status_label
+    selection_label is doc.selection_label
+    weight is state.new_weight
+    tag is doc.tag
+    quality_note is doc.quality_note
+  create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Source priority decreased."
+  create "Notice" with state.notice_row as notice_entry
+  return "ok"
+
+flow "ingest_selected": requires true
+  let sync_run is call flow "sync_library":
+    input:
+    output:
+      status
+
+  find "DocumentLibrary" where selected is true
+  let selected_docs is documentlibrary_results
+  let selected_count is list length of selected_docs
+  if selected_count is 0:
+    delete "Notice" where true
+    set state.notice_row with:
+      id is "current"
+      message is "Select at least one source before indexing."
+    create "Notice" with state.notice_row as notice_entry
+    return map:
+      "status" is "no_selection"
+
+  set state.blocked_count is 0
+  set state.indexed_count is 0
+
+  for each doc in selected_docs:
+    let out is call pipeline "ingestion":
+      input:
+        upload_id is doc.upload_id
+      output:
+        report
+        ingestion
+        index
+
+    let report is map get out key "report"
+    set state.ingestion is map get out key "ingestion"
+    set state.index is map get out key "index"
+
+    let provenance is map get report key "provenance"
+    let document_id is map get provenance key "document_id"
+    let source_name is map get provenance key "source_name"
+    let quality is map get report key "status"
+
+    set state.doc_status is "indexed"
+    set state.doc_status_label is "Indexed • " + doc.source_type
+    set state.doc_quality_note is "Indexed and ready to answer questions."
+    if quality is "block":
+      set state.doc_status is "blocked"
+      set state.doc_status_label is "Blocked • " + doc.source_type
+      set state.doc_quality_note is "Blocked by quality checks. Upload a cleaner source, then index again."
+      set state.blocked_count is state.blocked_count + 1
+    else:
+      set state.indexed_count is state.indexed_count + 1
+
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    set state.library_row with:
+      id is doc.upload_id
+      upload_id is doc.upload_id
+      document_id is document_id
+      source_name is source_name
+      source_type is doc.source_type
+      status is state.doc_status
+      quality is quality
+      selected is true
+      status_label is state.doc_status_label
+      selection_label is "Active"
+      weight is doc.weight
+      tag is doc.tag
+      quality_note is state.doc_quality_note
+    create "DocumentLibrary" with state.library_row as doc_entry
+
+  delete "Notice" where true
+  if state.blocked_count is greater than 0:
+    if state.indexed_count is greater than 0:
+      set state.notice_row with:
+        id is "current"
+        message is "Indexing finished. Some sources were blocked by quality checks."
+    else:
+      set state.notice_row with:
+        id is "current"
+        message is "All selected sources were blocked. Upload cleaner files and index again."
+  else:
+    set state.notice_row with:
+      id is "current"
+      message is "Indexing complete. Ask a question, then verify every claim with sources."
+  create "Notice" with state.notice_row as notice_entry
+  return map:
+    "status" is "ok"
+
+flow "ingest_document": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+  let doc is list get documentlibrary_results at 0
 
   let out is call pipeline "ingestion":
     input:
@@ -84,44 +780,186 @@ flow "ingest_latest": requires true
       index
 
   let report is map get out key "report"
-  let ingestion_state is map get out key "ingestion"
-  let index_state is map get out key "index"
-  set state.ingestion is ingestion_state
-  set state.index is index_state
+  set state.ingestion is map get out key "ingestion"
+  set state.index is map get out key "index"
+
   let provenance is map get report key "provenance"
   let document_id is map get provenance key "document_id"
   let source_name is map get provenance key "source_name"
   let quality is map get report key "status"
 
-  delete "Document" where upload_id is upload_id
+  set state.doc_status is "indexed"
+  set state.doc_status_label is "Indexed • " + doc.source_type
+  set state.doc_quality_note is "Indexed and ready to answer questions."
+  if quality is "block":
+    set state.doc_status is "blocked"
+    set state.doc_status_label is "Blocked • " + doc.source_type
+    set state.doc_quality_note is "Blocked by quality checks. Upload a cleaner source, then index again."
+
+  delete "DocumentLibrary" where upload_id is upload_id
   set state.doc_row with:
+    id is upload_id
+    upload_id is upload_id
     document_id is document_id
     source_name is source_name
-    upload_id is upload_id
-    status is "indexed"
+    source_type is doc.source_type
+    status is state.doc_status
     quality is quality
+    selected is doc.selected
+    status_label is state.doc_status_label
+    selection_label is doc.selection_label
+    weight is doc.weight
+    tag is doc.tag
+    quality_note is state.doc_quality_note
+  create "DocumentLibrary" with state.doc_row as doc_entry
+
+  delete "Notice" where true
   if quality is "block":
-    set state.doc_row.status is "blocked"
-  create "Document" with state.doc_row as doc_entry
+    set state.notice_row with:
+      id is "current"
+      message is "This source was blocked by quality checks. Upload a cleaner file, then index again."
+  else:
+    set state.notice_row with:
+      id is "current"
+      message is "Source indexed and ready."
+  create "Notice" with state.notice_row as notice_entry
+  return upload_id
 
-  set state.ingest.status is "ingested"
-  set state.ingest.message is "Ingestion complete."
-  set state.last_document_id is document_id
-  set state.last_source_name is source_name
-  return document_id
+flow "remove_document": requires true
+  try:
+    let removed_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
 
-flow "answer_question": requires true
-  set state.answer_error is ""
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    if doc.upload_id is not removed_upload_id:
+      create "DocumentLibrary" with doc as doc_entry
+
+  let uploads is list:
+  try:
+    let uploads is state.uploads.intake
+  with catch err:
+    set uploads is list:
+
+  set state.filtered_uploads is list:
+  for each file in uploads:
+    if file.id is not removed_upload_id:
+      set state.filtered_uploads is list append state.filtered_uploads with file
+  set state.uploads.intake is state.filtered_uploads
+
+  let chunks is list:
+  try:
+    let known_index is state.index
+    let chunks is map get known_index key "chunks"
+  with catch err:
+    set chunks is list:
+
+  set state.filtered_chunks is list:
+  for each chunk in chunks:
+    if chunk.upload_id is not removed_upload_id:
+      set state.filtered_chunks is list append state.filtered_chunks with chunk
+  set state.index with:
+    chunks is state.filtered_chunks
+
+  delete "Question" where true
+  delete "QueryProfile" where true
+  delete "Answer" where true
+  delete "CitationCard" where true
+  delete "RetrievalCandidate" where true
+  delete "RankingDecision" where true
+  delete "ExplainSummary" where true
+  delete "ExplainCandidate" where true
+  set state.chat.messages is list:
+  set state.chat.citations is list:
+
+  delete "Notice" where true
+  set state.notice_row with:
+    id is "current"
+    message is "Source removed. Conversation history was cleared to keep replay exact."
+  create "Notice" with state.notice_row as notice_entry
+  return removed_upload_id
+
+flow "prepare_query_profile": requires true
+  let normalized_query is normalize_query_text:
+    query is input.query
+
+  let keywords is extract_query_keywords:
+    query is normalized_query
+
+  set state.route is "lookup"
+  set state.has_summary_hint is false
+  set state.has_comparison_hint is false
+  set state.has_definition_hint is false
+
+  for each token in keywords:
+    if token is "summary" or token is "summarize" or token is "overview":
+      set state.has_summary_hint is true
+
+    if token is "compare" or token is "comparison" or token is "difference" or token is "versus" or token is "vs":
+      set state.has_comparison_hint is true
+
+    if token is "define" or token is "definition" or token is "meaning" or token is "what":
+      set state.has_definition_hint is true
+
+  if state.has_comparison_hint is true:
+    set state.route is "comparison"
+  else:
+    if state.has_summary_hint is true:
+      set state.route is "summary"
+    else:
+      if state.has_definition_hint is true:
+        set state.route is "definition"
+
+  return map:
+    "normalized_query" is normalized_query
+    "keywords" is keywords
+    "route" is state.route
+
+flow "ask_question": requires true
   set state.loading is true
 
+  let seed_run is call flow "seed_examples":
+    input:
+    output:
+      status
+
+  let q is ""
   try:
-    let q is input.message
+    let message_query is input.message
+    if message_query is not "":
+      set q is message_query
   with catch err:
-    set state.loading is false
-    return "missing_message"
+    set q is q
+
   if q is "":
+    try:
+      let row_query is input.row.query
+      set q is row_query
+    with catch err:
+      set state.loading is false
+      return map:
+        "answer_text" is ""
+        "mode" is "missing_query"
+
+  if q is "":
+    delete "Notice" where true
+    set state.notice_row with:
+      id is "current"
+      message is "Ask a question to search your sources."
+    create "Notice" with state.notice_row as notice_entry
     set state.loading is false
-    return "empty_message"
+    return map:
+      "answer_text" is ""
+      "mode" is "empty_query"
+
+  let sync_run is call flow "sync_library":
+    input:
+    output:
+      status
 
   try:
     let existing_messages is state.chat.messages
@@ -133,88 +971,521 @@ flow "answer_question": requires true
     content is q
   set state.chat.messages is list append state.chat.messages with state.user_msg
 
-  set state.question_row with:
-    query is q
-  create "Question" with state.question_row as question_entry
-
+  delete "RetrievalCandidate" where true
+  delete "RankingDecision" where true
   delete "ExplainSummary" where true
   delete "ExplainCandidate" where true
 
-  let retrieval_out is call pipeline "retrieval":
+  find "Question" where true
+  let question_count is list length of question_results
+  set state.query_id is question_count + 1
+
+  set state.question_row with:
+    id is state.query_id
+    query is q
+    source_scope is "selected_documents"
+  create "Question" with state.question_row as question_entry
+
+  let profile_out is call flow "prepare_query_profile":
     input:
       query is q
-      tier is "auto"
     output:
-      report
+      normalized_query
+      keywords
+      route
 
-  let retrieval_report is map get retrieval_out key "report"
-  let results is map get retrieval_report key "results"
-  let source_count is list length of results
+  set state.normalized_query is map get profile_out key "normalized_query"
+  set state.query_keywords is map get profile_out key "keywords"
+  set state.query_route is map get profile_out key "route"
 
-  set state.result_chunk_ids is list:
-  for each res in results:
-    set state.result_chunk_ids is list append state.result_chunk_ids with res.chunk_id
+  find "DocumentLibrary" where selected is true
+  let selected_docs is documentlibrary_results
+  let selected_count is list length of selected_docs
 
-  let offline is false
-  try:
-    let offline is input.offline
-  with catch err:
-    set offline is false
+  set state.active_upload_ids is list:
+  for each doc in selected_docs:
+    set state.active_upload_ids is list append state.active_upload_ids with doc.upload_id
 
-  if offline is true:
-    set state.answer_text is "See sources."
-    set state.answer_citations is state.result_chunk_ids
-    if source_count is greater than 0:
-      set state.confidence is 1
-    else:
-      set state.confidence is 0
-    set state.source_count is source_count
+  set state.profile_row with:
+    id is state.query_id
+    raw_query is q
+    normalized_query is state.normalized_query
+    route is state.query_route
+    keywords is state.query_keywords
+    active_documents is state.active_upload_ids
+  create "QueryProfile" with state.profile_row as profile_entry
+
+  set state.answer_text is ""
+  set state.answer_citations is list:
+  set state.confidence is 0
+  set state.source_count is 0
+  set state.answer_mode is "no_selection"
+  set state.answer_error is "No active documents selected."
+  set state.prompt_hash is "not_available"
+  set state.citation_status is "unvalidated"
+  set state.unknown_citations is list:
+
+  set state.semantic_candidate_count is 0
+  set state.lexical_candidate_count is 0
+  set state.rank_counter is 0
+  set state.active_chunks is list:
+  set state.final_ids is list:
+
+  if selected_count is 0:
+    set state.answer_text is "Select at least one indexed source before asking."
+    set state.answer_mode is "no_selection"
+    set state.answer_error is "No active documents selected."
   else:
-    let answer_out is call pipeline "answer":
-      input:
-        query is q
-        tier is "auto"
-      output:
-        report
-
-    let answer_report is map get answer_out key "report"
-    set state.answer_text is map get answer_report key "answer_text"
-    set state.answer_citations is map get answer_report key "citations"
-    set state.confidence is map get answer_report key "confidence"
-    set state.source_count is map get answer_report key "source_count"
-
+    let chunks is list:
     try:
-      let explain is map get answer_report key "explain"
-      let validation is map get explain key "answer_validation"
-      set state.summary_row with:
-        query is q
-        retrieval_mode is map get explain key "retrieval_mode"
-        candidate_count is map get explain key "candidate_count"
-        final_selection is map get explain key "final_selection"
-        ordering is map get explain key "ordering"
-        prompt_hash is map get validation key "prompt_hash"
-        citation_status is map get validation key "status"
-        citation_count is map get validation key "citation_count"
-        unknown_citations is map get validation key "unknown_citations"
-      create "ExplainSummary" with state.summary_row as explain_summary
-
-      let candidates is map get explain key "candidates"
-      set state.order_index is 0
-      for each cand in candidates:
-        set state.order_index is state.order_index + 1
-        set state.candidate_row with:
-          query is q
-          order is state.order_index
-          chunk_id is map get cand key "chunk_id"
-          ingestion_phase is map get cand key "ingestion_phase"
-          keyword_overlap is map get cand key "keyword_overlap"
-          page_number is map get cand key "page_number"
-          chunk_index is map get cand key "chunk_index"
-          decision is map get cand key "decision"
-          reason is map get cand key "reason"
-        create "ExplainCandidate" with state.candidate_row as explain_candidate
+      let known_index is state.index
+      let chunks is map get known_index key "chunks"
     with catch err:
-      set state.answer_error is "Explain bundle unavailable."
+      set chunks is list:
+
+    set state.active_chunks is list:
+    for each chunk in chunks:
+      set state.include_chunk is false
+      for each doc in selected_docs:
+        if state.include_chunk is false:
+          if doc.status is "indexed":
+            if doc.upload_id is chunk.upload_id:
+              set state.include_chunk is true
+      if state.include_chunk is true:
+        set state.active_chunks is list append state.active_chunks with chunk
+
+    let active_chunk_count is list length of state.active_chunks
+    if active_chunk_count is 0:
+      set state.answer_text is "No indexed sources are in your current search scope. Index sources and ask again."
+      set state.answer_mode is "no_support"
+      set state.answer_error is "No indexed sources in the active scope."
+    else:
+      set state.active_index with:
+        chunks is state.active_chunks
+
+      set state.semantic_limit is 8
+      if state.query_route is "summary":
+        set state.semantic_limit is 12
+      else:
+        if state.query_route is "comparison":
+          set state.semantic_limit is 12
+
+      let retrieval_out is call pipeline "retrieval":
+        input:
+          query is state.normalized_query
+          tier is "auto"
+          index is state.active_index
+        output:
+          report
+
+      let retrieval_report is map get retrieval_out key "report"
+      let semantic_results is list:
+      try:
+        let semantic_results is map get retrieval_report key "results"
+      with catch err:
+        set semantic_results is list:
+
+      set state.semantic_candidate_count is list length of semantic_results
+
+      set state.lexical_rows is list:
+      set state.lexical_rank_counter is 0
+      for each chunk in state.active_chunks:
+        let chunk_keywords is list:
+        try:
+          let chunk_keywords is chunk.keywords
+        with catch err:
+          set chunk_keywords is list:
+
+        set state.hit_count is 0
+        for each qk in state.query_keywords:
+          for each ck in chunk_keywords:
+            if qk is ck:
+              set state.hit_count is state.hit_count + 1
+
+        if state.hit_count is greater than 0:
+          set state.lexical_rank_counter is state.lexical_rank_counter + 1
+
+          set state.source_weight is 1
+          for each doc in selected_docs:
+            if doc.upload_id is chunk.upload_id:
+              set state.source_weight is doc.weight
+
+          set state.lex_row with:
+            chunk_id is chunk.chunk_id
+            upload_id is chunk.upload_id
+            document_id is chunk.document_id
+            source_name is chunk.source_name
+            page_number is chunk.page_number
+            chunk_index is chunk.chunk_index
+            ingestion_phase is chunk.ingestion_phase
+            snippet is chunk.text
+            lexical_hits is state.hit_count
+            lexical_rank is state.lexical_rank_counter
+            source_weight is state.source_weight
+          set state.lexical_rows is list append state.lexical_rows with state.lex_row
+
+      set state.lexical_candidate_count is list length of state.lexical_rows
+
+      set state.merged_rows is list:
+      set state.semantic_rank_counter is 0
+
+      for each res in semantic_results:
+        set state.semantic_rank_counter is state.semantic_rank_counter + 1
+
+        set state.chunk_id is res.chunk_id
+        set state.upload_id is ""
+        set state.document_id is ""
+        set state.source_name is "Source"
+        set state.page_number is 1
+        set state.chunk_index is 0
+        set state.ingestion_phase is "unknown"
+        set state.snippet is ""
+
+        try:
+          let maybe_upload is res.upload_id
+          set state.upload_id is maybe_upload
+        with catch err:
+          set state.upload_id is state.upload_id
+
+        try:
+          let maybe_doc_id is res.document_id
+          set state.document_id is maybe_doc_id
+        with catch err:
+          set state.document_id is state.document_id
+
+        try:
+          let maybe_source is res.source_name
+          set state.source_name is maybe_source
+        with catch err:
+          set state.source_name is state.source_name
+
+        try:
+          let maybe_page is res.page_number
+          set state.page_number is maybe_page
+        with catch err:
+          set state.page_number is state.page_number
+
+        try:
+          let maybe_chunk_index is res.chunk_index
+          set state.chunk_index is maybe_chunk_index
+        with catch err:
+          set state.chunk_index is state.chunk_index
+
+        try:
+          let maybe_phase is res.ingestion_phase
+          set state.ingestion_phase is maybe_phase
+        with catch err:
+          set state.ingestion_phase is state.ingestion_phase
+
+        try:
+          let maybe_snippet is res.text
+          set state.snippet is maybe_snippet
+        with catch err:
+          set state.snippet is state.snippet
+
+        for each chunk in state.active_chunks:
+          if chunk.chunk_id is state.chunk_id:
+            if state.upload_id is "":
+              set state.upload_id is chunk.upload_id
+            if state.document_id is "":
+              set state.document_id is chunk.document_id
+            if state.source_name is "Source":
+              set state.source_name is chunk.source_name
+            if state.page_number is 1:
+              set state.page_number is chunk.page_number
+            if state.chunk_index is 0:
+              set state.chunk_index is chunk.chunk_index
+            if state.ingestion_phase is "unknown":
+              set state.ingestion_phase is chunk.ingestion_phase
+            if state.snippet is "":
+              set state.snippet is chunk.text
+
+        set state.lexical_hits is 0
+        set state.lexical_rank is 0
+        for each lex in state.lexical_rows:
+          if lex.chunk_id is state.chunk_id:
+            set state.lexical_hits is lex.lexical_hits
+            set state.lexical_rank is lex.lexical_rank
+
+        set state.source_weight is 1
+        for each doc in selected_docs:
+          if doc.upload_id is state.upload_id:
+            set state.source_weight is doc.weight
+
+        set state.tier is "semantic_only"
+        if state.lexical_hits is greater than 0:
+          set state.tier is "hybrid_match"
+
+        set state.merged_score is 100 - state.semantic_rank_counter
+        set state.merged_score is state.merged_score + (state.lexical_hits * 10)
+        set state.merged_score is state.merged_score + (state.source_weight * 5)
+
+        set state.merged_row with:
+          chunk_id is state.chunk_id
+          upload_id is state.upload_id
+          document_id is state.document_id
+          source_name is state.source_name
+          page_number is state.page_number
+          chunk_index is state.chunk_index
+          ingestion_phase is state.ingestion_phase
+          snippet is state.snippet
+          tier is state.tier
+          semantic_rank is state.semantic_rank_counter
+          lexical_rank is state.lexical_rank
+          lexical_hits is state.lexical_hits
+          source_weight is state.source_weight
+          merged_score is state.merged_score
+        set state.merged_rows is list append state.merged_rows with state.merged_row
+
+      for each lex in state.lexical_rows:
+        set state.exists is false
+        for each merged in state.merged_rows:
+          if merged.chunk_id is lex.chunk_id:
+            set state.exists is true
+
+        if state.exists is false:
+          set state.merged_score is 30 + (lex.lexical_hits * 10)
+          set state.merged_score is state.merged_score + (lex.source_weight * 5)
+
+          set state.merged_row with:
+            chunk_id is lex.chunk_id
+            upload_id is lex.upload_id
+            document_id is lex.document_id
+            source_name is lex.source_name
+            page_number is lex.page_number
+            chunk_index is lex.chunk_index
+            ingestion_phase is lex.ingestion_phase
+            snippet is lex.snippet
+            tier is "lexical_only"
+            semantic_rank is 999
+            lexical_rank is lex.lexical_rank
+            lexical_hits is lex.lexical_hits
+            source_weight is lex.source_weight
+            merged_score is state.merged_score
+          set state.merged_rows is list append state.merged_rows with state.merged_row
+
+      set state.reranked_rows is list:
+
+      for each ranked in state.merged_rows:
+        if ranked.tier is "hybrid_match":
+          if ranked.source_weight is greater than 1:
+            set state.reranked_rows is list append state.reranked_rows with ranked
+
+      for each ranked in state.merged_rows:
+        if ranked.tier is "hybrid_match":
+          if ranked.source_weight is 1:
+            set state.reranked_rows is list append state.reranked_rows with ranked
+
+      for each ranked in state.merged_rows:
+        if ranked.tier is "semantic_only":
+          if ranked.source_weight is greater than 1:
+            set state.reranked_rows is list append state.reranked_rows with ranked
+
+      for each ranked in state.merged_rows:
+        if ranked.tier is "semantic_only":
+          if ranked.source_weight is 1:
+            set state.reranked_rows is list append state.reranked_rows with ranked
+
+      for each ranked in state.merged_rows:
+        if ranked.tier is "lexical_only":
+          set state.reranked_rows is list append state.reranked_rows with ranked
+
+      set state.top_k is 6
+      if state.query_route is "summary":
+        set state.top_k is 8
+      else:
+        if state.query_route is "comparison":
+          set state.top_k is 8
+
+      set state.rank_counter is 0
+      set state.final_rows is list:
+      set state.final_ids is list:
+
+      for each ranked in state.reranked_rows:
+        set state.rank_counter is state.rank_counter + 1
+
+        set state.selected is false
+        set state.decision is "skipped"
+        if state.rank_counter is at most state.top_k:
+          set state.selected is true
+          set state.decision is "selected"
+          set state.final_rows is list append state.final_rows with ranked
+          set state.final_ids is list append state.final_ids with ranked.chunk_id
+
+        set state.reason is "Semantic rank retained in deterministic order."
+        if ranked.tier is "hybrid_match":
+          set state.reason is "Selected for semantic + lexical agreement."
+        else:
+          if ranked.tier is "lexical_only":
+            set state.reason is "Lexical-only support appended after semantic candidates."
+
+        if ranked.source_weight is greater than 1:
+          set state.reason is "Source weighting boosted this candidate tier."
+
+        set state.decision_row with:
+          query_id is state.query_id
+          rank is state.rank_counter
+          chunk_id is ranked.chunk_id
+          tier is ranked.tier
+          semantic_rank is ranked.semantic_rank
+          lexical_rank is ranked.lexical_rank
+          lexical_hits is ranked.lexical_hits
+          source_weight is ranked.source_weight
+          merged_score is ranked.merged_score
+          selected is state.selected
+          reason is state.reason
+        create "RankingDecision" with state.decision_row as ranking_entry
+
+        set state.candidate_row with:
+          query_id is state.query_id
+          rank is state.rank_counter
+          chunk_id is ranked.chunk_id
+          source_name is ranked.source_name
+          page_number is ranked.page_number
+          chunk_index is ranked.chunk_index
+          ingestion_phase is ranked.ingestion_phase
+          tier is ranked.tier
+          semantic_rank is ranked.semantic_rank
+          lexical_rank is ranked.lexical_rank
+          lexical_hits is ranked.lexical_hits
+          source_weight is ranked.source_weight
+          merged_score is ranked.merged_score
+          decision is state.decision
+          reason is state.reason
+          snippet is ranked.snippet
+        create "RetrievalCandidate" with state.candidate_row as candidate_entry
+
+        set state.explain_candidate_row with:
+          query is q
+          order is state.rank_counter
+          chunk_id is ranked.chunk_id
+          ingestion_phase is ranked.ingestion_phase
+          keyword_overlap is ranked.lexical_hits
+          page_number is ranked.page_number
+          chunk_index is ranked.chunk_index
+          decision is state.decision
+          reason is state.reason
+        create "ExplainCandidate" with state.explain_candidate_row as explain_candidate
+
+      set state.expanded_ids is state.final_ids
+      for each selected in state.final_rows:
+        set state.selected_upload_id is selected.upload_id
+        set state.selected_chunk_index is selected.chunk_index
+
+        for each chunk in state.active_chunks:
+          if chunk.upload_id is state.selected_upload_id:
+            set state.distance is chunk.chunk_index - state.selected_chunk_index
+            if state.distance is less than 0:
+              set state.distance is 0 - state.distance
+
+            if state.distance is at most 1:
+              set state.seen_expanded is false
+              for each eid in state.expanded_ids:
+                if eid is chunk.chunk_id:
+                  set state.seen_expanded is true
+
+              if state.seen_expanded is false:
+                set state.expanded_ids is list append state.expanded_ids with chunk.chunk_id
+
+      set state.expanded_chunks is list:
+      for each chunk in state.active_chunks:
+        for each eid in state.expanded_ids:
+          if chunk.chunk_id is eid:
+            set state.expanded_chunks is list append state.expanded_chunks with chunk
+
+      set state.answer_index with:
+        chunks is state.expanded_chunks
+
+      let selected_count_final is list length of state.final_ids
+      if selected_count_final is 0:
+        set state.answer_text is "I couldn't find support in your selected sources for: " + state.normalized_query
+        set state.answer_citations is list:
+        set state.answer_mode is "no_support"
+        set state.answer_error is "No hybrid candidates selected."
+      else:
+        let offline is false
+        try:
+          let offline is input.offline
+        with catch err:
+          set offline is false
+
+        if offline is true:
+          set state.answer_text is "Citations-only mode is active. Read the source cards first, then decide."
+          set state.answer_citations is state.final_ids
+          set state.confidence is 1
+          set state.source_count is selected_count_final
+          set state.answer_mode is "citations_only"
+          set state.answer_error is "Explain validation unavailable in citations-only mode."
+          set state.prompt_hash is "not_available"
+          set state.citation_status is "unvalidated"
+          set state.unknown_citations is list:
+        else:
+          try:
+            let answer_out is call pipeline "answer":
+              input:
+                query is state.normalized_query
+                tier is "auto"
+                index is state.answer_index
+              output:
+                report
+
+            let answer_report is map get answer_out key "report"
+            set state.answer_text is map get answer_report key "answer_text"
+
+            let answer_citations is list:
+            try:
+              let answer_citations is map get answer_report key "citations"
+            with catch err:
+              set answer_citations is state.final_ids
+            set state.answer_citations is answer_citations
+
+            set state.confidence is map get answer_report key "confidence"
+            set state.source_count is map get answer_report key "source_count"
+            set state.answer_mode is "answer"
+            set state.answer_error is ""
+
+            set state.prompt_hash is "not_available"
+            set state.citation_status is "unvalidated"
+            set state.unknown_citations is list:
+
+            try:
+              let explain is map get answer_report key "explain"
+              let validation is map get explain key "answer_validation"
+              set state.prompt_hash is map get validation key "prompt_hash"
+              set state.citation_status is map get validation key "status"
+              set state.unknown_citations is map get validation key "unknown_citations"
+            with catch err:
+              set state.answer_error is "Answer generated without validation metadata."
+          with catch err:
+            set state.answer_text is "Answer provider is unavailable. Showing deterministic cited sources only."
+            set state.answer_citations is state.final_ids
+            set state.confidence is 1
+            set state.source_count is selected_count_final
+            set state.answer_mode is "provider_fallback"
+            set state.answer_error is "Provider unavailable. Validation metadata not produced."
+            set state.prompt_hash is "not_available"
+            set state.citation_status is "unvalidated"
+            set state.unknown_citations is list:
+
+      let final_citation_count is list length of state.answer_citations
+      if final_citation_count is 0:
+        set state.answer_citations is state.final_ids
+
+      set state.ordered_citations is list:
+      for each fid in state.final_ids:
+        for each cid in state.answer_citations:
+          if cid is fid:
+            set state.ordered_citations is list append state.ordered_citations with fid
+
+      for each cid in state.answer_citations:
+        set state.seen_ordered is false
+        for each oid in state.ordered_citations:
+          if oid is cid:
+            set state.seen_ordered is true
+        if state.seen_ordered is false:
+          set state.ordered_citations is list append state.ordered_citations with cid
+
+      set state.answer_citations is state.ordered_citations
 
   set state.chat.citations is list:
   for each cid in state.answer_citations:
@@ -223,47 +1494,283 @@ flow "answer_question": requires true
       chunk_id is cid
       source_id is cid
       snippet is ""
-    set state.found is false
-    for each res in results:
-      if state.found is false:
-        if res.chunk_id is cid:
-          set state.found is true
-          set state.citation_row with:
-            title is res.source_name
-            chunk_id is res.chunk_id
-            document_id is res.document_id
-            page_number is res.page_number
-            snippet is res.text
+      page_number is 1
+      document_id is ""
+
+    for each chunk in state.active_chunks:
+      if chunk.chunk_id is cid:
+        set state.citation_row with:
+          title is chunk.source_name
+          chunk_id is chunk.chunk_id
+          source_id is chunk.chunk_id
+          snippet is chunk.text
+          page_number is chunk.page_number
+          document_id is chunk.document_id
+
     set state.chat.citations is list append state.chat.citations with state.citation_row
 
+  find "Answer" where true
+  let answer_count is list length of answer_results
+  set state.answer_id is answer_count + 1
+
   set state.answer_row with:
+    id is state.answer_id
     query is q
     answer_text is state.answer_text
     citations is state.answer_citations
     confidence is state.confidence
     source_count is state.source_count
+    mode is state.answer_mode
   create "Answer" with state.answer_row as answer_entry
+
+  delete "CitationCard" where true
+  set state.citation_id is 0
+  for each citation in state.chat.citations:
+    set state.citation_id is state.citation_id + 1
+    set state.page_label is "Page"
+
+    set state.card_row with:
+      id is state.citation_id
+      answer_id is state.answer_id
+      source_title is citation.title
+      chunk_id is citation.chunk_id
+      source_name is citation.title
+      document_id is citation.document_id
+      page_number is citation.page_number
+      page_label is state.page_label
+      snippet is citation.snippet
+    create "CitationCard" with state.card_row as citation_entry
+
+  let ordered_count is list length of state.answer_citations
+  set state.summary_row with:
+    query is q
+    retrieval_mode is "hybrid_semantic_lexical"
+    route is state.query_route
+    candidate_count is state.rank_counter
+    semantic_candidate_count is state.semantic_candidate_count
+    lexical_candidate_count is state.lexical_candidate_count
+    final_selection is state.final_ids
+    ordering is "hybrid(weighted) -> semantic(weighted) -> lexical"
+    rerank_policy is "hybrid+weight tiering with stable semantic and lexical tie-breakers"
+    expansion_mode is "small_to_big_window_1"
+    chunking_config is "runtime chunking with deterministic chunk ids and neighbor expansion window 1"
+    prompt_hash is state.prompt_hash
+    citation_status is state.citation_status
+    citation_count is ordered_count
+    unknown_citations is state.unknown_citations
+    provider_mode is state.answer_mode
+  create "ExplainSummary" with state.summary_row as summary_entry
 
   set state.assistant_msg with:
     role is "assistant"
     content is state.answer_text
   set state.chat.messages is list append state.chat.messages with state.assistant_msg
 
+  delete "Notice" where true
+  if state.answer_mode is "no_selection":
+    set state.notice_row with:
+      id is "current"
+      message is "Select at least one indexed source, then ask again."
+  else:
+    if state.answer_mode is "no_support":
+      set state.notice_row with:
+        id is "current"
+        message is "I couldn't find support in your selected sources. Rephrase using words from those documents."
+    else:
+      if state.answer_mode is "provider_fallback":
+        set state.notice_row with:
+          id is "current"
+          message is "Provider unavailable. Running in citations-only mode."
+      else:
+        if state.answer_mode is "citations_only":
+          set state.notice_row with:
+            id is "current"
+            message is "Citations-only mode is active. Open sources and verify each claim."
+        else:
+          set state.notice_row with:
+            id is "current"
+            message is "Answer ready. Verify each claim with the source cards."
+  create "Notice" with state.notice_row as notice_entry
+
   set state.loading is false
-  return state.answer_text
+  return map:
+    "answer_text" is state.answer_text
+    "mode" is state.answer_mode
+
+flow "run_demo_mode_path": requires true
+  let sync_out is call flow "sync_library":
+    input:
+    output:
+      status
+
+  let sync_status is map get sync_out key "status"
+  if sync_status is "no_upload":
+    delete "Notice" where true
+    set state.notice_row with:
+      id is "current"
+      message is "Guided demo needs one file first. Upload assets/sample.pdf, then run it again."
+    create "Notice" with state.notice_row as notice_entry
+    return "no_upload"
+
+  let ingest_result is call flow "ingest_selected":
+    input:
+    output:
+      status
+
+  find "DocumentLibrary" where selected is true and status is "indexed"
+  let indexed_selected_count is list length of documentlibrary_results
+  if indexed_selected_count is 0:
+    delete "Notice" where true
+    set state.notice_row with:
+      id is "current"
+      message is "No sources were indexed. Check quality notes in the library, then try again."
+    create "Notice" with state.notice_row as notice_entry
+    return "not_ready"
+
+  let demo_answer is call flow "ask_question":
+    input:
+      message is "runtime enforces citations"
+      offline is true
+    output:
+      answer_text
+      mode
+
+  delete "Notice" where true
+  let demo_mode is map get demo_answer key "mode"
+  if demo_mode is "no_support":
+    set state.notice_row with:
+      id is "current"
+      message is "Guided run finished, but no support was found. Check your selected sources and try a grounded question."
+  else:
+    set state.notice_row with:
+      id is "current"
+      message is "Guided demo finished in citations-only mode. Open source cards and Explain to verify each step."
+  create "Notice" with state.notice_row as notice_entry
+  return "ok"
+
+flow "reset_demo": requires true
+  delete "DocumentLibrary" where true
+  delete "ExampleQuestion" where true
+  delete "Question" where true
+  delete "QueryProfile" where true
+  delete "Answer" where true
+  delete "CitationCard" where true
+  delete "RetrievalCandidate" where true
+  delete "RankingDecision" where true
+  delete "ExplainSummary" where true
+  delete "ExplainCandidate" where true
+  delete "Notice" where true
+
+  set state.chat.messages is list:
+  set state.chat.citations is list:
+  set state.loading is false
+
+  set state.uploads.intake is list:
+  set state.ingestion with:
+    reset is true
+  set state.index with:
+    chunks is list:
+
+  let seed_run is call flow "seed_examples":
+    input:
+    output:
+      status
+
+  set state.notice_row with:
+    id is "current"
+    message is "Demo reset. Upload, index, ask, then verify with sources."
+  create "Notice" with state.notice_row as notice_entry
+  return "reset"
 
 page "RAG Demo":
   title is "RAG Chat"
-  text is "Upload a PDF, run ingestion, then chat."
+  text is "Every claim is cited."
 
-  section "Upload PDF":
-    upload intake
-    button "Run ingestion":
-      calls flow "ingest_latest"
+  row:
+    column:
+      section "Status":
+        list is Notice:
+          variant is "single_line"
+          item:
+            primary is message
+    column:
+      section "View":
+        text is "Views: Chat | Explain"
 
-  section "Chat":
-    chat:
-      messages from is state.chat.messages
-      thinking when is state.loading
-      composer calls flow "answer_question"
-      citations from is state.chat.citations
+  tabs:
+    default is "Chat"
+
+    tab "Chat":
+      row:
+        column:
+          section "Setup":
+            text is "Upload PDF, Markdown, or Text files."
+            upload intake
+            row:
+              column:
+                button "Sync uploads":
+                  variant is "secondary"
+                  calls flow "sync_library"
+              column:
+                button "Ingest selected":
+                  variant is "secondary"
+                  calls flow "ingest_selected"
+            list is DocumentLibrary:
+              variant is "two_line"
+              selection is "multi"
+              item:
+                primary is source_name
+                secondary is status_label
+                meta is selection_label
+              actions:
+                action "Focus only this source":
+                  calls flow "select_document"
+                action "Add to scope":
+                  calls flow "add_document_selection"
+                action "Remove from scope":
+                  calls flow "remove_document_selection"
+                action "Re-ingest":
+                  calls flow "ingest_document"
+                action "Remove source":
+                  calls flow "remove_document"
+              empty_text is "Upload a PDF to start."
+
+        column:
+          section "Chat":
+            chat:
+              messages from is state.chat.messages
+              thinking when is state.loading
+              composer calls flow "ask_question"
+              citations from is state.chat.citations
+
+          list is CitationCard:
+            variant is "two_line"
+            item:
+              primary is source_name
+              secondary is page_label
+              meta is snippet
+            empty_text is ""
+
+    tab "Explain":
+      section "Explain":
+        list is ExplainSummary:
+          variant is "two_line"
+          item:
+            primary is retrieval_mode
+            secondary is citation_status
+            meta is ordering
+          empty_text is "Ask a question to generate explain data."
+
+      table is ExplainCandidate:
+        columns:
+          include order
+          include decision
+          include reason
+          include page_number
+          include chunk_index
+          include ingestion_phase
+          include keyword_overlap
+        sort:
+          by is order
+          order is asc
+        empty_text is ""

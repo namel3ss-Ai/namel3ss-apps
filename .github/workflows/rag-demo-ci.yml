@@ -1,0 +1,76 @@
+name: rag-demo-ci
+
+on:
+  pull_request:
+    paths:
+      - 'apps/rag-demo/**'
+      - 'docs/**'
+      - 'invariants/**'
+      - '.github/workflows/rag-demo-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/rag-demo/**'
+      - 'docs/**'
+      - 'invariants/**'
+      - '.github/workflows/rag-demo-ci.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/rag-demo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install namel3ss pytest
+
+      - name: Validate app manifest
+        run: n3 check app.ai
+
+      - name: Run deterministic smoke test
+        run: pytest -q tests/test_rag_demo_smoke.py
+
+      - name: Run deterministic eval gate
+        run: python3 eval/run_eval.py --offline --fail-on-regression --baseline eval/report_baseline.json
+
+      - name: Run constitutional invariant gate
+        run: python3 ../../invariants/check_invariants.py --app-dir . --report eval/report.json --constitution ../../docs/constitution.md --out eval/invariants_report.json
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-demo-eval-report
+          path: apps/rag-demo/eval/report.json
+
+      - name: Upload invariants report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-demo-invariants-report
+          path: apps/rag-demo/eval/invariants_report.json
+
+      - name: Reproduce locally (on failure)
+        if: failure()
+        run: |
+          echo "Reproduce with:"
+          echo "  cd apps/rag-demo"
+          echo "  n3 check app.ai"
+          echo "  pytest -q tests/test_rag_demo_smoke.py"
+          echo "  python3 eval/run_eval.py --offline --fail-on-regression --baseline eval/report_baseline.json"
+          echo "  python3 ../../invariants/check_invariants.py --app-dir . --report eval/report.json --constitution ../../docs/constitution.md --out eval/invariants_report.json"
+          echo "Inspect: apps/rag-demo/eval/report.json"
+          echo "Inspect: apps/rag-demo/eval/invariants_report.json"

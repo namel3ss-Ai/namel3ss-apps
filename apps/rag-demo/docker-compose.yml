@@ -1,0 +1,15 @@
+services:
+  rag-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "7340:7340"
+    environment:
+      N3_PERSIST_ROOT: /app/data
+      PORT: "7340"
+    volumes:
+      - ./data:/app/data

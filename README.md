@@ -2,6 +2,15 @@
 
 This repository contains demo and reference applications built using the [namel3ss](https://github.com/namel3ss-Ai/namel3ss) AI-native DSL.
 
+## Governance and Long-Term Contracts
+
+- Constitution: `docs/constitution.md`
+- Anti-patterns: `docs/anti-patterns.md`
+- Learning path: `docs/learning-path.md`
+- Stewardship and succession: `docs/stewardship.md`
+- Decision log (ADRs): `docs/decisions/`
+- Invariant gate: `invariants/check_invariants.py`
+
 ## Apps
 
 ### 📞 Support Chat
