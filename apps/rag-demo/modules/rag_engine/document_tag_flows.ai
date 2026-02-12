@@ -1,0 +1,318 @@
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+flow "tag_document_product": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is upload_id
+
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is "product • priority"
+    "weight" is doc.weight
+    "tags" is list: "product"
+    "primary_tag" is "product"
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as tagged_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Tag set to Product."
+  as notice_tag_product
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "tag_document_policy": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is upload_id
+
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is "policy • priority"
+    "weight" is doc.weight
+    "tags" is list: "policy"
+    "primary_tag" is "policy"
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as tagged_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Tag set to Policy."
+  as notice_tag_policy
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "tag_document_general": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is upload_id
+
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is "general • priority"
+    "weight" is doc.weight
+    "tags" is list: "general"
+    "primary_tag" is "general"
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as tagged_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Tag set to General."
+  as notice_tag_general
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "bulk_tag_selected_product": requires true
+  find "DocumentLibrary" where selected is true
+  for each doc in documentlibrary_results:
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is doc.selected
+      "status_label" is doc.status_label
+      "scope_label" is "product • priority"
+      "weight" is doc.weight
+      "tags" is list: "product"
+      "primary_tag" is "product"
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as tagged_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Bulk tag applied: Product."
+  as notice_bulk_tag_product
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "bulk_tag_selected_policy": requires true
+  find "DocumentLibrary" where selected is true
+  for each doc in documentlibrary_results:
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is doc.selected
+      "status_label" is doc.status_label
+      "scope_label" is "policy • priority"
+      "weight" is doc.weight
+      "tags" is list: "policy"
+      "primary_tag" is "policy"
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as tagged_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Bulk tag applied: Policy."
+  as notice_bulk_tag_policy
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "bulk_tag_selected_general": requires true
+  find "DocumentLibrary" where selected is true
+  for each doc in documentlibrary_results:
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is doc.selected
+      "status_label" is doc.status_label
+      "scope_label" is "general • priority"
+      "weight" is doc.weight
+      "tags" is list: "general"
+      "primary_tag" is "general"
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as tagged_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Bulk tag applied: General."
+  as notice_bulk_tag_general
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "bulk_tag_selected_custom": requires true
+  set state.custom_tag is ""
+  try:
+    let maybe_tag is input.custom_tag_input
+    if maybe_tag is not "":
+      set state.custom_tag is maybe_tag
+  with catch err:
+    set state.custom_tag is state.custom_tag
+
+  if state.custom_tag is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Invalid tag input. Enter a non-empty tag."
+    as notice_invalid_tag
+    return "invalid_tag"
+
+  find "DocumentLibrary" where selected is true
+  let selected_count is list length of documentlibrary_results
+  if selected_count is 0:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Select at least one source before applying a custom tag."
+    as notice_no_selection
+    return "no_selection"
+
+  for each doc in documentlibrary_results:
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is doc.selected
+      "status_label" is doc.status_label
+      "scope_label" is state.custom_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is list: state.custom_tag
+      "primary_tag" is state.custom_tag
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as tagged_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Bulk custom tag applied."
+  as notice_custom_tag
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"

@@ -1,0 +1,263 @@
+contract flow "rag_engine.refresh_diagnostics_view":
+  input:
+  output:
+    status is text
+
+flow "finalize_answer_state": requires true
+  set state.context_text is ""
+  set state.answer_prompt is ""
+  set state.final_rows is list:
+
+  set state.active_query_id is 0
+  try:
+    let maybe_query_id is state.query_id
+    set state.active_query_id is maybe_query_id
+  with catch err:
+    set state.active_query_id is 0
+
+  if state.active_query_id is 0:
+    find "Question" where true
+    let question_count is list length of question_results
+    if question_count is greater than 0:
+      let latest_question is list get question_results at question_count - 1
+      set state.active_query_id is latest_question.id
+
+  find "RetrievalCandidate" where query_id is state.active_query_id and mode is "final" and selected is true
+  for each candidate in retrievalcandidate_results:
+    set state.final_row with:
+      chunk_id is candidate.chunk_id
+      upload_id is candidate.source_id
+      document_id is candidate.document_id
+      source_name is candidate.source_name
+      page_number is candidate.page_number
+      chunk_index is candidate.chunk_index
+      ingestion_phase is candidate.ingestion_phase
+      snippet is candidate.snippet
+      tag is candidate.tag
+      tier is candidate.tier
+      semantic_rank is candidate.semantic_rank
+      lexical_rank is candidate.lexical_rank
+      lexical_hits is candidate.lexical_hits
+      semantic_score is candidate.semantic_score
+      lexical_score is candidate.lexical_score
+      source_weight is candidate.source_weight
+      merged_score is candidate.merged_score
+    set state.final_rows is list append state.final_rows with state.final_row
+
+  set state.answer_citations is list:
+  set state.context_lines is list:
+  for each selected_chunk in state.final_rows:
+    set state.citation_chunk_id is selected_chunk.chunk_id
+    set state.citation_document_id is selected_chunk.document_id
+    if selected_chunk.ingestion_phase is "fallback":
+      set state.citation_chunk_id is selected_chunk.upload_id
+      set state.citation_document_id is ""
+    find "DocumentLibrary" where upload_id is selected_chunk.upload_id
+    let citation_doc_count is list length of documentlibrary_results
+    if citation_doc_count is greater than 0:
+      let citation_doc is list get documentlibrary_results at 0
+      if citation_doc.source_type is not "PDF":
+        set state.citation_chunk_id is selected_chunk.upload_id
+        set state.citation_document_id is ""
+    set state.citation_row with:
+      title is selected_chunk.source_name
+      source_id is selected_chunk.upload_id
+      chunk_id is state.citation_chunk_id
+      document_id is state.citation_document_id
+      page_number is selected_chunk.page_number
+      snippet is selected_chunk.snippet
+      tag is selected_chunk.tag
+    set state.answer_citations is list append state.answer_citations with state.citation_row
+    set state.context_lines is list append state.context_lines with selected_chunk.snippet
+
+  let final_count is list length of state.final_rows
+  if final_count is 0:
+    set state.answer_text is "No grounded support found in indexed sources for this query."
+    set state.answer_mode is "no_support"
+    set state.answer_confidence is 0
+    set state.answer_source_count is 0
+  else:
+    set state.context_text is ""
+    for each line in state.context_lines:
+      if state.context_text is "":
+        set state.context_text is "- " + line
+      else:
+        set state.context_text is state.context_text + "\n- " + line
+
+    let lead_chunk is list get state.final_rows at 0
+    set state.answer_prompt is "Question: " + state.q + "\nEvidence:\n" + state.context_text
+    set state.compiled_answer_text is "Grounded summary from " + lead_chunk.source_name + ":\n" + state.context_text
+    if final_count is greater than 1:
+      set state.compiled_answer_text is "Grounded summary from selected sources:\n" + state.context_text
+    try:
+      ask ai "rag_writer_ai" with stream is true and input: state.answer_prompt as model_answer
+      if model_answer is "":
+        set state.answer_text is state.compiled_answer_text
+        set state.answer_mode is "answer_compiled_fallback"
+      else:
+        set state.answer_text is model_answer
+        set state.answer_mode is "answer_stream_real"
+    with catch err:
+      set state.answer_text is state.compiled_answer_text
+      set state.answer_mode is "answer_compiled_fallback"
+
+    set state.answer_confidence is 1
+    set state.answer_source_count is final_count
+
+  let citation_count is list length of state.answer_citations
+  set state.citation_score is citation_count / 4
+  if state.citation_score is greater than 1:
+    set state.citation_score is 1
+
+  set state.unique_sources is list:
+  for each citation in state.answer_citations:
+    set state.exists is false
+    for each source_id in state.unique_sources:
+      if source_id is citation.source_id:
+        set state.exists is true
+    if state.exists is false:
+      set state.unique_sources is list append state.unique_sources with citation.source_id
+
+  let unique_count is list length of state.unique_sources
+  set state.diversity_score is 0
+  if citation_count is greater than 0:
+    set state.diversity_score is unique_count / citation_count
+
+  set state.overlap_score is 0
+  let final_rank_count is list length of state.final_rows
+  if final_rank_count is greater than 0:
+    set state.overlap_total is 0
+    for each final_row in state.final_rows:
+      set state.overlap_total is state.overlap_total + final_row.lexical_hits
+    set state.overlap_score is state.overlap_total / (final_rank_count * 3)
+    if state.overlap_score is greater than 1:
+      set state.overlap_score is 1
+
+  set state.quality_score is 1
+  for each final_row in state.final_rows:
+    find "DocumentLibrary" where upload_id is final_row.upload_id
+    let doc_count is list length of documentlibrary_results
+    if doc_count is greater than 0:
+      let matched_doc is list get documentlibrary_results at 0
+      if matched_doc.quality is "warn":
+        set state.quality_score is 0.7
+      if matched_doc.quality is "fail":
+        set state.quality_score is 0.4
+
+  set state.answer_trust_score is (state.citation_score * 0.35) + (state.diversity_score * 0.25) + (state.overlap_score * 0.25) + (state.quality_score * 0.15)
+
+  set state.answer_trust_label is "No Support"
+  if state.answer_trust_score is greater than 0.79:
+    set state.answer_trust_label is "Trusted"
+  else:
+    if state.answer_trust_score is greater than 0.49:
+      set state.answer_trust_label is "Caution"
+
+  set state.answer_trusted is false
+  if state.answer_trust_label is "Trusted":
+    set state.answer_trusted is true
+
+  set state.chat.citations is state.answer_citations
+
+  find "Answer" where true
+  let answer_count is list length of answer_results
+  set state.answer_id is answer_count + 1
+
+  create "Answer" with map:
+    "id" is state.answer_id
+    "query" is state.q
+    "answer_text" is state.answer_text
+    "citations" is state.answer_citations
+    "trusted" is state.answer_trusted
+    "trust_score" is state.answer_trust_score
+    "trust_label" is state.answer_trust_label
+    "confidence" is state.answer_confidence
+    "source_count" is state.answer_source_count
+    "mode" is state.answer_mode
+  as answer_row
+
+  delete "CitationCard" where true
+  set state.citation_id is 0
+  for each citation in state.answer_citations:
+    set state.citation_id is state.citation_id + 1
+    create "CitationCard" with map:
+      "id" is state.citation_id
+      "answer_id" is state.answer_id
+      "source_name" is citation.title
+      "source_id" is citation.source_id
+      "chunk_id" is citation.chunk_id
+      "document_id" is citation.document_id
+      "page_number" is citation.page_number
+      "page_label" is "Page (snippet fallback)"
+      "snippet" is citation.snippet
+      "tag" is citation.tag
+    as citation_card
+
+  set state.active_tags_text is ""
+  try:
+    let active_tags is state.tag.active
+    for each active_tag in active_tags:
+      if state.active_tags_text is "":
+        set state.active_tags_text is active_tag
+      else:
+        set state.active_tags_text is state.active_tags_text + "," + active_tag
+  with catch err:
+    set state.active_tags_text is state.active_tags_text
+
+  if state.active_tags_text is "":
+    set state.active_tags_text is "all"
+
+  set state.retrieval_params_snapshot is "semantic_weight, semantic_k, lexical_k, final_top_k, filter_tags=" + state.active_tags_text
+  set state.citation_summary is state.answer_trust_label + " | citations available"
+
+  create "ExplainSummary" with map:
+    "query" is state.q
+    "retrieval_mode" is "hybrid_semantic_lexical"
+    "route" is state.query_route
+    "retrieval_params" is state.retrieval_params_snapshot
+    "candidate_count" is state.rank_counter
+    "semantic_candidate_count" is state.semantic_count
+    "lexical_candidate_count" is state.lexical_count
+    "final_selection" is state.answer_citations
+    "ordering" is "merged_score desc with deterministic ties"
+    "rerank_policy" is "semantic/lexical weight slider with bounded k"
+    "expansion_mode" is "none"
+    "chunking_config" is "deterministic ingestion chunks"
+    "citation_status" is state.answer_trust_label
+    "citation_count" is citation_count
+    "citation_summary" is state.citation_summary
+    "provider_mode" is state.answer_mode
+    "context_used" is state.context_text
+    "prompt_used" is state.answer_prompt
+  as explain_summary
+
+  set state.answer with:
+    query is state.q
+    answer_text is state.answer_text
+    citations is state.answer_citations
+    citation_count is citation_count
+    trusted is state.answer_trusted
+    trust_score is state.answer_trust_score
+    trust_label is state.answer_trust_label
+    source_count is state.answer_source_count
+    confidence is state.answer_confidence
+    mode is state.answer_mode
+    available is true
+
+  if citation_count is greater than 0:
+    let first_citation is list get state.answer_citations at 0
+    set state.selected_citation_source is first_citation.source_id
+    set state.drawer with:
+      has_selection is true
+  else:
+    set state.selected_citation_source is ""
+    set state.drawer with:
+      has_selection is false
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"

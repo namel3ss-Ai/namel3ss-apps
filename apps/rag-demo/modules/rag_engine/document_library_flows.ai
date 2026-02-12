@@ -1,0 +1,498 @@
+contract flow "rag_engine.initialize_defaults":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.seed_examples":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+flow "sync_library": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  let examples_status is call flow "rag_engine.seed_examples":
+    input:
+    output:
+      status
+
+  set state.upload_entries is list:
+
+  try:
+    let raw_uploads is state.uploads.documents
+    try:
+      for each upload_entry in raw_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+    with catch err:
+      let upload_keys is map keys raw_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+  with catch err:
+    set state.upload_entries is list:
+
+  let upload_count is list length of state.upload_entries
+  if upload_count is 0:
+    find "DocumentLibrary" where true
+    let doc_count is list length of documentlibrary_results
+    if doc_count is 0:
+      delete "Notice" where true
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Add documents or load the sample corpus to begin."
+      as notice_empty
+      let summary_status is call flow "rag_engine.refresh_index_summary":
+        input:
+        output:
+          status
+      return map:
+        "status" is "no_upload"
+
+  for each file in state.upload_entries:
+    set state.upload_id is ""
+
+    try:
+      let maybe_id is file.id
+      if maybe_id is not "":
+        set state.upload_id is maybe_id
+    with catch err:
+      set state.upload_id is state.upload_id
+
+    if state.upload_id is "":
+      try:
+        let maybe_checksum is file.checksum
+        if maybe_checksum is not "":
+          set state.upload_id is maybe_checksum
+      with catch err:
+        set state.upload_id is state.upload_id
+
+    if state.upload_id is "":
+      try:
+        let maybe_name_for_id is file.name
+        if maybe_name_for_id is not "":
+          set state.upload_id is maybe_name_for_id
+      with catch err:
+        set state.upload_id is state.upload_id
+
+    if state.upload_id is "":
+      set state.upload_id is "unknown-upload"
+
+    find "DocumentLibrary" where upload_id is state.upload_id
+    let existing_count is list length of documentlibrary_results
+    if existing_count is 0:
+      set state.source_name is state.upload_id
+      try:
+        let maybe_name is file.name
+        if maybe_name is not "":
+          set state.source_name is maybe_name
+      with catch err:
+        set state.source_name is state.source_name
+
+      set state.source_type is "Text"
+      try:
+        let maybe_type is file.type
+        if maybe_type is "application/pdf":
+          set state.source_type is "PDF"
+        else:
+          if maybe_type is "text/plain":
+            set state.source_type is "Text"
+          else:
+            if maybe_type is not "":
+              set state.source_type is maybe_type
+      with catch err:
+        set state.source_type is state.source_type
+
+      create "DocumentLibrary" with map:
+        "id" is state.upload_id
+        "upload_id" is state.upload_id
+        "document_id" is state.upload_id
+        "source_name" is state.source_name
+        "source_type" is state.source_type
+        "status" is "uploaded"
+        "ingestion_stage" is "queued"
+        "progress_percent" is 0
+        "quality" is "pending"
+        "selected" is true
+        "status_label" is "Queued • " + state.source_type
+        "scope_label" is "general • priority 1"
+        "weight" is 1
+        "tags" is list: "general"
+        "primary_tag" is "general"
+        "quality_note" is "Upload synced. Re-index to make this source searchable."
+        "last_error" is ""
+      as library_row
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Uploads synced. Use bulk actions to tag and index selected sources."
+  as notice_synced
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "select_document": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    set state.selected is false
+    if doc.upload_id is selected_upload_id:
+      set state.selected is true
+
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is state.selected
+      "status_label" is doc.status_label
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as focused_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Focused selection on one source."
+  as notice_focus
+
+  return selected_upload_id
+
+flow "add_document_selection": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is selected_upload_id
+  let found_count is list length of documentlibrary_results
+  if found_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is selected_upload_id
+
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is true
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as selected_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source added to active retrieval scope."
+  as notice_add
+
+  return selected_upload_id
+
+flow "remove_document_selection": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is selected_upload_id
+  let found_count is list length of documentlibrary_results
+  if found_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is selected_upload_id
+
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is false
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as unselected_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source removed from active retrieval scope."
+  as notice_remove
+
+  return selected_upload_id
+
+flow "bulk_select_all": requires true
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is true
+      "status_label" is doc.status_label
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as selected_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "All sources selected."
+  as notice_bulk_select
+
+  return "ok"
+
+flow "bulk_clear_selection": requires true
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is false
+      "status_label" is doc.status_label
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as cleared_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Selection cleared."
+  as notice_bulk_clear
+
+  return "ok"
+
+flow "bulk_remove_selected": requires true
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  set state.removed_ids is list:
+  for each doc in docs:
+    if doc.selected is true:
+      set state.removed_ids is list append state.removed_ids with doc.upload_id
+    else:
+      create "DocumentLibrary" with doc as kept_doc
+
+  try:
+    let chunks is state.index.chunks
+    set state.kept_chunks is list:
+    for each chunk in chunks:
+      set state.keep_chunk is true
+      for each removed_id in state.removed_ids:
+        if chunk.upload_id is removed_id:
+          set state.keep_chunk is false
+      if state.keep_chunk is true:
+        set state.kept_chunks is list append state.kept_chunks with chunk
+    set state.index with:
+      chunks is state.kept_chunks
+  with catch err:
+    set state.index with:
+      chunks is list:
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Selected sources removed."
+  as notice_bulk_remove
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "remove_document": requires true
+  try:
+    let removed_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    if doc.upload_id is not removed_upload_id:
+      create "DocumentLibrary" with doc as kept_doc
+
+  try:
+    let chunks is state.index.chunks
+    set state.kept_chunks is list:
+    for each chunk in chunks:
+      if chunk.upload_id is not removed_upload_id:
+        set state.kept_chunks is list append state.kept_chunks with chunk
+    set state.index with:
+      chunks is state.kept_chunks
+  with catch err:
+    set state.index with:
+      chunks is list:
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source removed."
+  as notice_removed
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return removed_upload_id
+
+flow "increase_document_weight": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  set state.new_weight is doc.weight + 1
+  if state.new_weight is greater than 3:
+    set state.new_weight is 3
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is state.new_weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as weighted_doc
+
+  return "ok"
+
+flow "decrease_document_weight": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  set state.new_weight is doc.weight - 1
+  if state.new_weight is less than 1:
+    set state.new_weight is 1
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is state.new_weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as weighted_doc
+
+  return "ok"

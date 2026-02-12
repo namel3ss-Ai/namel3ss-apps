@@ -1,0 +1,462 @@
+contract flow "rag_engine.initialize_defaults":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+flow "ingest_selected": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  find "DocumentLibrary" where selected is true
+  let selected_docs is documentlibrary_results
+  let selected_count is list length of selected_docs
+  if selected_count is 0:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "indexing_without_selection: Select at least one source before indexing."
+    as notice_no_selection
+    let summary_status is call flow "rag_engine.refresh_index_summary":
+      input:
+      output:
+        status
+    return map:
+      "status" is "no_selection"
+
+  try:
+    let existing_chunks is state.index.chunks
+    set state.existing_chunks is existing_chunks
+  with catch err:
+    set state.existing_chunks is list:
+
+  set state.failed_count is 0
+  set state.indexed_count is 0
+
+  for each doc in selected_docs:
+    set state.ingestion_stage is "parsing"
+    set state.progress_percent is 25
+
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is "indexing"
+      "ingestion_stage" is state.ingestion_stage
+      "progress_percent" is state.progress_percent
+      "quality" is "pending"
+      "selected" is doc.selected
+      "status_label" is "Parsing • " + doc.source_type
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is "Parsing upload content."
+      "last_error" is ""
+    as parsing_row
+
+    set state.ingestion_stage is "chunking"
+    set state.progress_percent is 50
+
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is "indexing"
+      "ingestion_stage" is state.ingestion_stage
+      "progress_percent" is state.progress_percent
+      "quality" is "pending"
+      "selected" is doc.selected
+      "status_label" is "Chunking • " + doc.source_type
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is "Preparing deterministic chunks."
+      "last_error" is ""
+    as chunking_row
+
+    set state.ingestion_stage is "embedding"
+    set state.progress_percent is 75
+
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is "indexing"
+      "ingestion_stage" is state.ingestion_stage
+      "progress_percent" is state.progress_percent
+      "quality" is "pending"
+      "selected" is doc.selected
+      "status_label" is "Embedding • " + doc.source_type
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is "Generating deterministic embedding index."
+      "last_error" is ""
+    as embedding_row
+
+    set state.ingestion_stage is "indexing"
+    set state.progress_percent is 90
+
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is "indexing"
+      "ingestion_stage" is state.ingestion_stage
+      "progress_percent" is state.progress_percent
+      "quality" is "pending"
+      "selected" is doc.selected
+      "status_label" is "Indexing • " + doc.source_type
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is "Writing chunks to deterministic index."
+      "last_error" is ""
+    as indexing_row
+
+    set state.incoming_chunks is list:
+    set state.quality is "pass"
+    set state.last_error is ""
+
+    try:
+      let out is call pipeline "ingestion":
+        input:
+          upload_id is doc.upload_id
+        output:
+          report
+          ingestion
+          index
+
+      set state.index_payload is map get out key "index"
+      set state.report_payload is map get out key "report"
+
+      try:
+        let quality_status is map get state.report_payload key "status"
+        if quality_status is not "":
+          set state.quality is quality_status
+      with catch err:
+        set state.quality is state.quality
+
+      try:
+        let chunk_list is map get state.index_payload key "chunks"
+        set state.incoming_chunks is chunk_list
+      with catch err:
+        set state.incoming_chunks is list:
+    with catch err:
+      set state.quality is "fail"
+      set state.last_error is "pipeline_error"
+      set state.incoming_chunks is list:
+
+    let incoming_count is list length of state.incoming_chunks
+    if incoming_count is 0:
+      set state.fallback_chunk with:
+        chunk_id is doc.upload_id + ":fallback:1"
+        upload_id is doc.upload_id
+        document_id is doc.document_id
+        source_name is doc.source_name
+        page_number is 1
+        chunk_index is 1
+        ingestion_phase is "fallback"
+        text is "Fallback chunk for " + doc.source_name + ". Upload searchable/OCR text for full grounding."
+        keywords is list: "fallback", "document", "source", "grounding"
+      set state.incoming_chunks is list append state.incoming_chunks with state.fallback_chunk
+      if state.quality is "pass":
+        set state.quality is "warn"
+
+    set state.normalized_chunks is list:
+    set state.chunk_counter is 0
+    for each chunk in state.incoming_chunks:
+      set state.chunk_counter is state.chunk_counter + 1
+      set state.chunk_id_value is doc.upload_id
+      try:
+        let maybe_chunk_id is chunk.chunk_id
+        if maybe_chunk_id is not "":
+          set state.chunk_id_value is maybe_chunk_id
+      with catch err:
+        set state.chunk_id_value is state.chunk_id_value
+      set state.page_number_value is 1
+      try:
+        let maybe_page_number is chunk.page_number
+        if maybe_page_number is greater than 0:
+          set state.page_number_value is maybe_page_number
+      with catch err:
+        set state.page_number_value is state.page_number_value
+      set state.chunk_index_value is state.chunk_counter
+      try:
+        let maybe_chunk_index is chunk.chunk_index
+        if maybe_chunk_index is greater than 0:
+          set state.chunk_index_value is maybe_chunk_index
+      with catch err:
+        set state.chunk_index_value is state.chunk_index_value
+      set state.ingestion_phase_value is "indexed"
+      try:
+        let maybe_ingestion_phase is chunk.ingestion_phase
+        if maybe_ingestion_phase is not "":
+          set state.ingestion_phase_value is maybe_ingestion_phase
+      with catch err:
+        set state.ingestion_phase_value is state.ingestion_phase_value
+      set state.text_value is "Indexed chunk for " + doc.source_name
+      try:
+        let maybe_text is chunk.text
+        if maybe_text is not "":
+          set state.text_value is maybe_text
+      with catch err:
+        set state.text_value is state.text_value
+      set state.keywords_value is list:
+        "document"
+        "source"
+        "evidence"
+      try:
+        let maybe_keywords is chunk.keywords
+        set state.keywords_value is maybe_keywords
+      with catch err:
+        set state.keywords_value is state.keywords_value
+      set state.normalized_chunk with:
+        chunk_id is state.chunk_id_value
+        upload_id is doc.upload_id
+        document_id is doc.document_id
+        source_name is doc.source_name
+        page_number is state.page_number_value
+        chunk_index is state.chunk_index_value
+        ingestion_phase is state.ingestion_phase_value
+        text is state.text_value
+        keywords is state.keywords_value
+      set state.normalized_chunks is list append state.normalized_chunks with state.normalized_chunk
+    set state.incoming_chunks is state.normalized_chunks
+
+    set state.kept_chunks is list:
+    for each chunk in state.existing_chunks:
+      if chunk.upload_id is not doc.upload_id:
+        set state.kept_chunks is list append state.kept_chunks with chunk
+
+    set state.existing_chunks is state.kept_chunks
+    for each chunk in state.incoming_chunks:
+      set state.existing_chunks is list append state.existing_chunks with chunk
+
+    set state.final_status is "indexed"
+    set state.final_stage is "indexed"
+    set state.final_progress is 100
+    set state.final_label is "Indexed • " + doc.source_type
+    set state.final_note is "Indexed and ready for retrieval."
+
+    if state.quality is "fail":
+      set state.final_status is "failed"
+      set state.final_stage is "failed_indexing"
+      set state.final_label is "Failed • " + doc.source_type
+      set state.final_note is "Ingestion failed. Retry or upload cleaner content."
+      set state.failed_count is state.failed_count + 1
+    else:
+      if state.quality is "warn":
+        set state.final_label is "Indexed (Fallback) • " + doc.source_type
+        set state.final_note is "Fallback chunk indexed. Upload searchable/OCR text for better grounding."
+      set state.indexed_count is state.indexed_count + 1
+
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is state.final_status
+      "ingestion_stage" is state.final_stage
+      "progress_percent" is state.final_progress
+      "quality" is state.quality
+      "selected" is doc.selected
+      "status_label" is state.final_label
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is state.final_note
+      "last_error" is state.last_error
+    as final_doc
+
+  set state.index with:
+    chunks is state.existing_chunks
+
+  delete "Notice" where true
+  if state.failed_count is greater than 0:
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Indexing completed with deterministic failures. Use Retry on failed rows."
+    as notice_failed
+  else:
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Indexing complete. Ask a question to inspect citations and trust."
+    as notice_indexed
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "bulk_reindex_selected": requires true
+  find "DocumentLibrary" where selected is true
+  let selected_count is list length of documentlibrary_results
+  if selected_count is 0:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "indexing_without_selection: Select at least one source before re-index."
+    as notice_bulk_reindex_empty
+    let summary_status is call flow "rag_engine.refresh_index_summary":
+      input:
+      output:
+        status
+    return "no_selection"
+
+  for each doc in documentlibrary_results:
+    delete "DocumentLibrary" where upload_id is doc.upload_id
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is "uploaded"
+      "ingestion_stage" is "queued"
+      "progress_percent" is 0
+      "quality" is "pending"
+      "selected" is doc.selected
+      "status_label" is "Queued • " + doc.source_type
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is "Queued for deterministic re-index."
+      "last_error" is ""
+    as queued_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Selected sources queued. Run Create index to execute deterministic ingestion stages."
+  as notice_bulk_reindex
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "ingest_document": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is "uploaded"
+    "ingestion_stage" is "queued"
+    "progress_percent" is 0
+    "quality" is "pending"
+    "selected" is true
+    "status_label" is "Queued • " + doc.source_type
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is "Queued for row re-index."
+    "last_error" is ""
+  as queued_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Document queued. Click Create index to run deterministic ingestion."
+  as notice_row_reindex
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"
+
+flow "retry_document": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is "uploaded"
+    "ingestion_stage" is "queued"
+    "progress_percent" is 0
+    "quality" is "pending"
+    "selected" is true
+    "status_label" is "Queued • " + doc.source_type
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is "Retry queued for deterministic ingestion."
+    "last_error" is ""
+  as retry_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Retry queued. Click Create index to run deterministic stages again."
+  as notice_retry
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return "ok"

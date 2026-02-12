@@ -1,0 +1,49 @@
+flow "open_citation": requires true
+  set state.source_id is ""
+
+  try:
+    let row_source_id is input.row.source_id
+    if row_source_id is not "":
+      set state.source_id is row_source_id
+  with catch err:
+    set state.source_id is state.source_id
+
+  if state.source_id is "":
+    find "CitationCard" where true
+    let citation_count is list length of citationcard_results
+    if citation_count is greater than 0:
+      let first_citation is list get citationcard_results at 0
+      set state.source_id is first_citation.source_id
+
+  if state.source_id is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Select a citation with available source metadata."
+    as notice_missing_citation
+    return "missing_citation"
+
+  set state.selected_citation_source is state.source_id
+  set state.drawer with:
+    has_selection is true
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source context updated."
+  as notice_open_citation
+
+  return "ok"
+
+flow "clear_sources_drawer": requires true
+  set state.selected_citation_source is ""
+  set state.drawer with:
+    has_selection is false
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source drawer cleared."
+  as notice_clear_drawer
+
+  return "ok"

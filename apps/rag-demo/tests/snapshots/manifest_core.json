@@ -1,5 +1,5 @@
 {
-  "page_slug": "rag_demo",
+  "page_slug": "chat",
   "layout_slots": [
     "drawer_right",
     "footer",
@@ -7,7 +7,7 @@
     "main",
     "sidebar_left"
   ],
-  "diagnostics_blocks": 4,
+  "diagnostics_blocks": 0,
   "upload_request": {
     "name": "documents",
     "accept": [
@@ -16,55 +16,50 @@
     ],
     "multiple": true,
     "required": false,
-    "label": "Add Documents",
-    "preview": true
+    "label": "Upload documents",
+    "preview": false
   },
   "theme_name": "modern",
-  "theme_css_hash": "3e984ad608356d2e0e4919f4799aaa3b583acf715e556245a88e379ac28060f1",
-  "has_source_preview_component": false,
+  "theme_css_hash": "ba971dbc6efecbe4a7886c028f0c535a68ff6f1a38e9faeb5d3e4c8adde93a67",
   "scope_selector": {
-    "options_source": "state.scope.options",
-    "active_source": "state.scope.active"
+    "options_source": "state.tag.options",
+    "active_source": "state.tag.active"
   },
   "chats": [
     {
       "style": "bubbles",
-      "show_avatars": true,
+      "show_avatars": false,
       "group_messages": true,
       "actions": [
-        "copy",
-        "expand",
         "view_sources"
       ],
       "attachments": true,
       "streaming": false
-    },
-    {
-      "style": "bubbles",
-      "show_avatars": true,
-      "group_messages": true,
-      "actions": [
-        "copy",
-        "expand",
-        "view_sources"
-      ],
-      "attachments": true,
-      "streaming": true
     }
   ],
   "composer_action": {
-    "id": "page.rag_demo.composer.4.0.1.composer",
+    "id": "page.chat.composer.2.1.0.2.composer",
     "type": "call_flow",
-    "flow": "ask_question"
+    "flow": "rag_engine.ask_question"
+  },
+  "run_guided_action": {
+    "id": "page.library.button.run_guided_path",
+    "type": "call_flow",
+    "flow": "rag_engine.run_demo_mode_path"
+  },
+  "reset_chat_action": {
+    "id": "page.chat.button.reset_chat",
+    "type": "call_flow",
+    "flow": "rag_engine.reset_chat"
   },
   "clear_drawer_action": {
-    "id": "page.rag_demo.button.reset_source_drawer",
+    "id": "page.chat.button.reset_source_drawer",
     "type": "call_flow",
-    "flow": "clear_sources_drawer"
+    "flow": "rag_engine.clear_sources_drawer"
   },
   "upload_actions": {
     "select": "upload_select",
     "clear": "upload_clear",
-    "ingestion": "ingestion_run"
+    "ingestion": "ingestion_review"
   }
 }

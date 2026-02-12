@@ -1,0 +1,185 @@
+ai "rag_writer_ai":
+  provider is "openai"
+  model is "gpt-3.5-turbo"
+  system_prompt is "You are a grounded RAG assistant. Summarize only with cited evidence."
+  memory:
+    short_term is 0
+    semantic is false
+    profile is false
+
+record "DocumentLibrary":
+  fields:
+    id is text must be present
+    upload_id is text must be present
+    document_id is text must be present
+    source_name is text must be present
+    source_type is text must be present
+    status is text must be present
+    ingestion_stage is text must be present
+    progress_percent is number must be present
+    quality is text must be present
+    selected is boolean must be present
+    status_label is text must be present
+    scope_label is text must be present
+    weight is number must be present
+    tags is json must be present
+    primary_tag is text must be present
+    quality_note is text must be present
+    last_error is text must be present
+
+record "ExampleQuestion":
+  fields:
+    id is number must be present
+    query is text must be present
+    route is text must be present
+    hint is text must be present
+
+record "Question":
+  fields:
+    id is number must be present
+    query is text must be present
+    route is text must be present
+    source_scope is text must be present
+
+record "QueryProfile":
+  fields:
+    id is number must be present
+    raw_query is text must be present
+    normalized_query is text must be present
+    route is text must be present
+    keywords is json must be present
+    active_documents is json must be present
+    active_tags is json must be present
+
+record "Answer":
+  fields:
+    id is number must be present
+    query is text must be present
+    answer_text is text must be present
+    citations is json must be present
+    trusted is boolean must be present
+    trust_score is number must be present
+    trust_label is text must be present
+    confidence is number must be present
+    source_count is number must be present
+    mode is text must be present
+
+record "CitationCard":
+  fields:
+    id is number must be present
+    answer_id is number must be present
+    source_name is text must be present
+    source_id is text must be present
+    chunk_id is text must be present
+    document_id is text must be present
+    page_number is number must be present
+    page_label is text must be present
+    snippet is text must be present
+    tag is text must be present
+
+record "RetrievalCandidate":
+  fields:
+    query_id is number must be present
+    mode is text must be present
+    rank is number must be present
+    chunk_id is text must be present
+    document_id is text must be present
+    source_name is text must be present
+    source_id is text must be present
+    tag is text must be present
+    page_number is number must be present
+    chunk_index is number must be present
+    ingestion_phase is text must be present
+    tier is text must be present
+    semantic_rank is number must be present
+    lexical_rank is number must be present
+    lexical_hits is number must be present
+    semantic_score is number must be present
+    lexical_score is number must be present
+    source_weight is number must be present
+    merged_score is number must be present
+    selected is boolean must be present
+    reason is text must be present
+    snippet is text must be present
+
+record "RetrievalCandidateView":
+  fields:
+    query_id is number must be present
+    mode is text must be present
+    display_rank is number must be present
+    rank is number must be present
+    chunk_id is text must be present
+    source_name is text must be present
+    source_id is text must be present
+    tag is text must be present
+    tier is text must be present
+    lexical_hits is number must be present
+    source_weight is number must be present
+    merged_score is number must be present
+    selected is boolean must be present
+    reason is text must be present
+
+record "RankingDecision":
+  fields:
+    query_id is number must be present
+    rank is number must be present
+    chunk_id is text must be present
+    tier is text must be present
+    merged_score is number must be present
+    selected is boolean must be present
+    reason is text must be present
+
+record "ExplainSummary":
+  fields:
+    query is text must be present
+    retrieval_mode is text must be present
+    route is text must be present
+    retrieval_params is text must be present
+    candidate_count is number must be present
+    semantic_candidate_count is number must be present
+    lexical_candidate_count is number must be present
+    final_selection is json must be present
+    ordering is text must be present
+    rerank_policy is text must be present
+    expansion_mode is text must be present
+    chunking_config is text must be present
+    citation_status is text must be present
+    citation_count is number must be present
+    citation_summary is text must be present
+    provider_mode is text must be present
+    context_used is text must be present
+    prompt_used is text must be present
+
+record "ExplainCandidate":
+  fields:
+    query is text must be present
+    order is number must be present
+    chunk_id is text must be present
+    ingestion_phase is text must be present
+    keyword_overlap is number must be present
+    page_number is number must be present
+    chunk_index is number must be present
+    decision is text must be present
+    reason is text must be present
+
+record "Notice":
+  fields:
+    id is text must be present
+    message is text must be present
+
+record "IndexSummary":
+  fields:
+    id is text must be present
+    headline is text must be present
+    status_line is text must be present
+    total_documents is number must be present
+    ready_documents is number must be present
+    queued_documents is number must be present
+    ingesting_documents is number must be present
+    failed_documents is number must be present
+    chunk_count is number must be present
+    tag_breakdown is text must be present
+    tag_product_count is number must be present
+    tag_policy_count is number must be present
+    tag_general_count is number must be present
+    tag_custom_count is number must be present

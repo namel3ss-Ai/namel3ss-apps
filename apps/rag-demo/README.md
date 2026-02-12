@@ -1,26 +1,27 @@
-# RAG Demo (Namel3ss 0.1.0a15)
+# RAG Demo (Namel3ss 0.1.0a18)
 
-This demo now runs end-to-end in **Namel3ss**:
+Premium deterministic RAG demo built in Namel3ss with:
 
-- Backend logic (ingestion, retrieval, ranking, answer generation) in `app.ai`
-- Frontend UI (layout, chat, uploads, citations, diagnostics) in `app.ai`
-- Query profiling and routing in `app.ai` (no Python helper tools)
+- Upload -> ingest -> chat -> citations -> explain
+- Deterministic retrieval tuning controls
+- Source drawer + snippet/page fallback previews
+- Studio diagnostics for retrieval traces and ranking decisions
 
-No external frontend is required for normal use.
+## Dependency Pin
 
-## Dependency
+- `namel3ss==0.1.0a18` (see `pyproject.toml`)
 
-Pinned in `pyproject.toml`:
-
-- `namel3ss==0.1.0a15`
-
-## Run (Namel3ss UI + Backend)
+## Quickstart
 
 ```bash
 cd apps/rag-demo
-python3 -m pip install -e .[dev]
-
-n3 app.ai check
+python3.14 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install "namel3ss==0.1.0a18"
+python -m pip install pytest
+python tools/ensure_provider_manifests.py
+python -m namel3ss app.ai check
 ./run.sh
 ```
 
@@ -28,69 +29,89 @@ Open:
 
 - `http://127.0.0.1:7360/`
 
-## Configure Real OpenAI APIs
+## Environment Variables
 
-Recommended local secret workflow:
-
-1. Create `.env` from `.env.example`
-2. Put your keys in `.env`
-3. Start with `./run.sh` (it auto-loads `.env`)
+Create `.env` from `.env.example`:
 
 ```bash
 cd apps/rag-demo
 cp .env.example .env
 ```
 
-`.env` values:
+Common values:
 
 ```bash
 N3_API_TOKEN=dev-token
 N3_DISABLE_API_TOKEN=1
 NAMEL3SS_OPENAI_API_KEY=sk-...
-# OR
-# OPENAI_API_KEY=sk-...
+# or
+OPENAI_API_KEY=sk-...
 ```
 
-`N3_DISABLE_API_TOKEN=1` is recommended for local preview and avoids browser auth issues during upload/actions.
+Notes:
 
-Security note:
+- `N3_DISABLE_API_TOKEN=1` is recommended for local preview.
+- Set `NAMEL3SS_OPENAI_API_KEY` (or `OPENAI_API_KEY`) to use real OpenAI responses in chat.
+- If no API key is set, the demo falls back to deterministic compiled answers.
+- `.env` is gitignored and must stay local.
 
-- `.env` is gitignored and should not be committed.
+## Studio vs Production
 
-## What the UI Includes (All from Namel3ss)
-
-- Sidebar document management with upload + scope selection
-- Main chat with grouped bubbles, message actions, citations, trust indicator
-- Source drawer for citation evidence cards
-- Sticky composer for prompt input
-- Diagnostics panel (separate from product UI)
-- Theme tokens and modern layout slots
-
-## How to Test Quickly
-
-1. Upload a `.txt` or `.pdf`
-2. Click `Synchronize uploads`
-3. Click `Index selected sources`
-4. Ask a question in chat
-
-## Troubleshooting
-
-If browser says connection refused:
+Production preview (default browser UX):
 
 ```bash
-lsof -nP -iTCP:7360 -sTCP:LISTEN
-```
-
-If it is not listening, re-run:
-
-```bash
-cd apps/rag-demo
 ./run.sh
+```
+
+Studio instrumentation mode:
+
+```bash
+n3 run studio app.ai --port 7360 --no-open
+```
+
+In Studio, the diagnostics slot shows:
+
+- retrieval tuning effects
+- filtered candidate tables
+- ranking rationale and explain records
+
+## What To Expect In UX
+
+1. **First run**
+- Primary `Upload documents` CTA.
+- Clear file type guidance (`PDF`, `TXT`).
+- 3-line usage onboarding in the left panel.
+
+2. **Ingestion**
+- Deterministic statuses (`queued`, `indexing`, `indexed`, `failed`).
+- Asking a question auto-syncs uploads and auto-indexes selected sources.
+- Index summary card (document/chunk counts + tag breakdown).
+- Actionable notices for retry/fallback states.
+
+3. **Chat + citations**
+- Bubble chat with deterministic thinking indicator.
+- `Reset chat` and `Reset source drawer` controls.
+- Citation list + source drawer selection mapping.
+- Deterministic page/snippet fallback labels when preview rendering is unavailable.
+
+4. **Explain + diagnostics**
+- Explain summary with retrieval parameter snapshot.
+- Candidate and ranking tables for deterministic debugging.
+- Tuning controls for `semantic_weight`, `semantic_k`, `lexical_k`, `final_top_k`, and tag filtering.
+
+## Tests
+
+Run full local validation:
+
+```bash
+python3 -m compileall . -q
+python3 -m pytest -q
+./smoke.sh
 ```
 
 ## Headless API
 
-If you want to build a custom UI later, run this same app with headless endpoints:
+This same app can be called headlessly:
 
 - `GET /api/v1/ui`
 - `POST /api/v1/actions/<action_id>`

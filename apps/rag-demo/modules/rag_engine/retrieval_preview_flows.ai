@@ -1,0 +1,173 @@
+contract flow "rag_engine.refresh_diagnostics_view":
+  input:
+  output:
+    status is text
+
+flow "rerun_last_query": requires true
+  if state.last_query is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "No previous query available for preview."
+    as notice_no_preview_query
+    return map:
+      "status" is "no_query"
+
+  find "Question" where true
+  let q_count is list length of question_results
+  if q_count is 0:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "No previous retrieval run available for preview."
+    as notice_no_preview_run
+    return map:
+      "status" is "no_run"
+
+  let latest_query is list get question_results at q_count - 1
+  set state.query_id is latest_query.id
+
+  find "RetrievalCandidate" where query_id is state.query_id and mode is "semantic"
+  let semantic_rows is retrievalcandidate_results
+  find "RetrievalCandidate" where query_id is state.query_id and mode is "lexical"
+  let lexical_rows is retrievalcandidate_results
+
+  let semantic_count is list length of semantic_rows
+  let lexical_count is list length of lexical_rows
+  if semantic_count is 0 and lexical_count is 0:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Preview unavailable: no cached candidates. Ask again first."
+    as notice_no_cached_candidates
+    return map:
+      "status" is "no_cached_candidates"
+
+  delete "RetrievalCandidate" where query_id is state.query_id and mode is "final"
+  delete "RankingDecision" where query_id is state.query_id
+  delete "ExplainCandidate" where query is latest_query.query
+
+  set state.semantic_weight is state.retrieval.semantic_weight
+  set state.lexical_weight is 100 - state.semantic_weight
+
+  set state.merged_rows is list:
+  for each sem in semantic_rows:
+    set state.lexical_hits is 0
+    set state.lexical_rank is 999
+    for each lex in lexical_rows:
+      if lex.chunk_id is sem.chunk_id:
+        set state.lexical_hits is lex.lexical_hits
+        set state.lexical_rank is lex.lexical_rank
+
+    set state.semantic_component is (sem.semantic_score * state.semantic_weight) / 100
+    set state.lexical_component is (state.lexical_hits * state.lexical_weight) / 100
+    set state.merged_score is state.semantic_component + state.lexical_component + (sem.source_weight * 2)
+
+    set state.tier is "semantic_only"
+    if state.lexical_hits is greater than 0:
+      set state.tier is "hybrid_match"
+
+    set state.merged_row with:
+      chunk_id is sem.chunk_id
+      upload_id is sem.source_id
+      document_id is sem.document_id
+      source_name is sem.source_name
+      page_number is sem.page_number
+      chunk_index is sem.chunk_index
+      ingestion_phase is sem.ingestion_phase
+      snippet is sem.snippet
+      tag is sem.tag
+      tier is state.tier
+      semantic_rank is sem.semantic_rank
+      lexical_rank is state.lexical_rank
+      lexical_hits is state.lexical_hits
+      semantic_score is sem.semantic_score
+      lexical_score is state.lexical_hits
+      source_weight is sem.source_weight
+      merged_score is state.merged_score
+    set state.merged_rows is list append state.merged_rows with state.merged_row
+
+  for each lex in lexical_rows:
+    set state.exists is false
+    for each merged in state.merged_rows:
+      if merged.chunk_id is lex.chunk_id:
+        set state.exists is true
+
+    if state.exists is false:
+      set state.merged_score is (lex.lexical_score * state.lexical_weight) / 100 + (lex.source_weight * 2)
+      set state.merged_row with:
+        chunk_id is lex.chunk_id
+        upload_id is lex.source_id
+        document_id is lex.document_id
+        source_name is lex.source_name
+        page_number is lex.page_number
+        chunk_index is lex.chunk_index
+        ingestion_phase is lex.ingestion_phase
+        snippet is lex.snippet
+        tag is lex.tag
+        tier is "lexical_only"
+        semantic_rank is 999
+        lexical_rank is lex.lexical_rank
+        lexical_hits is lex.lexical_hits
+        semantic_score is 0
+        lexical_score is lex.lexical_score
+        source_weight is lex.source_weight
+        merged_score is state.merged_score
+      set state.merged_rows is list append state.merged_rows with state.merged_row
+
+  order state.merged_rows by merged_score from highest to lowest
+
+  set state.rank_counter is 0
+  for each ranked in state.merged_rows:
+    set state.rank_counter is state.rank_counter + 1
+    set state.selected is false
+    if state.rank_counter is at most state.retrieval.final_top_k:
+      set state.selected is true
+
+    create "RankingDecision" with map:
+      "query_id" is state.query_id
+      "rank" is state.rank_counter
+      "chunk_id" is ranked.chunk_id
+      "tier" is ranked.tier
+      "merged_score" is ranked.merged_score
+      "selected" is state.selected
+      "reason" is "Preview rerank"
+    as ranking_preview
+
+    create "RetrievalCandidate" with map:
+      "query_id" is state.query_id
+      "mode" is "final"
+      "rank" is state.rank_counter
+      "chunk_id" is ranked.chunk_id
+      "source_name" is ranked.source_name
+      "source_id" is ranked.upload_id
+      "tag" is ranked.tag
+      "page_number" is ranked.page_number
+      "chunk_index" is ranked.chunk_index
+      "ingestion_phase" is ranked.ingestion_phase
+      "tier" is ranked.tier
+      "semantic_rank" is ranked.semantic_rank
+      "lexical_rank" is ranked.lexical_rank
+      "lexical_hits" is ranked.lexical_hits
+      "semantic_score" is ranked.semantic_score
+      "lexical_score" is ranked.lexical_score
+      "source_weight" is ranked.source_weight
+      "merged_score" is ranked.merged_score
+      "selected" is state.selected
+      "reason" is "Preview rerank"
+      "snippet" is ranked.snippet
+    as preview_candidate
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Ranking preview updated deterministically with current tuning controls."
+  as notice_preview_updated
+
+  return map:
+    "status" is "ok"

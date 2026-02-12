@@ -1,0 +1,469 @@
+contract flow "rag_engine.initialize_defaults":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_diagnostics_view":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.rerun_last_query":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.set_final_top_k":
+  input:
+    value is number
+  output:
+    status is text
+
+contract flow "rag_engine.set_lexical_k":
+  input:
+    value is number
+  output:
+    status is text
+
+contract flow "rag_engine.set_semantic_k":
+  input:
+    value is number
+  output:
+    status is text
+
+flow "set_semantic_weight": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.requested_value is state.retrieval.semantic_weight
+  try:
+    let input_value is input.value
+    set state.requested_value is input_value
+  with catch err:
+    set state.requested_value is state.requested_value
+
+  if state.requested_value is less than 0:
+    set state.requested_value is 0
+  if state.requested_value is greater than 100:
+    set state.requested_value is 100
+
+  set state.retrieval with:
+    semantic_weight is state.requested_value
+    semantic_k is state.retrieval.semantic_k
+    lexical_k is state.retrieval.lexical_k
+    final_top_k is state.retrieval.final_top_k
+
+  let rerank_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Retrieval tuning updated: semantic_weight preset applied."
+  as notice_set_semantic_weight
+
+  return map:
+    "status" is "ok"
+
+flow "set_semantic_k": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.requested_value is state.retrieval.semantic_k
+  try:
+    let input_value is input.value
+    set state.requested_value is input_value
+  with catch err:
+    set state.requested_value is state.requested_value
+
+  if state.requested_value is less than 1:
+    set state.requested_value is 1
+  if state.requested_value is greater than 20:
+    set state.requested_value is 20
+
+  set state.retrieval with:
+    semantic_weight is state.retrieval.semantic_weight
+    semantic_k is state.requested_value
+    lexical_k is state.retrieval.lexical_k
+    final_top_k is state.retrieval.final_top_k
+
+  let rerank_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Retrieval tuning updated: semantic_k set."
+  as notice_set_semantic_k
+
+  return map:
+    "status" is "ok"
+
+flow "set_lexical_k": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.requested_value is state.retrieval.lexical_k
+  try:
+    let input_value is input.value
+    set state.requested_value is input_value
+  with catch err:
+    set state.requested_value is state.requested_value
+
+  if state.requested_value is less than 1:
+    set state.requested_value is 1
+  if state.requested_value is greater than 20:
+    set state.requested_value is 20
+
+  set state.retrieval with:
+    semantic_weight is state.retrieval.semantic_weight
+    semantic_k is state.retrieval.semantic_k
+    lexical_k is state.requested_value
+    final_top_k is state.retrieval.final_top_k
+
+  let rerank_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Retrieval tuning updated: lexical_k set."
+  as notice_set_lexical_k
+
+  return map:
+    "status" is "ok"
+
+flow "set_final_top_k": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.requested_value is state.retrieval.final_top_k
+  try:
+    let input_value is input.value
+    set state.requested_value is input_value
+  with catch err:
+    set state.requested_value is state.requested_value
+
+  if state.requested_value is less than 1:
+    set state.requested_value is 1
+  if state.requested_value is greater than 12:
+    set state.requested_value is 12
+
+  set state.retrieval with:
+    semantic_weight is state.retrieval.semantic_weight
+    semantic_k is state.retrieval.semantic_k
+    lexical_k is state.retrieval.lexical_k
+    final_top_k is state.requested_value
+
+  let rerank_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Retrieval tuning updated: final_top_k set."
+  as notice_set_final_top_k
+
+  return map:
+    "status" is "ok"
+
+flow "apply_retrieval_weight_preset_lexical": requires true
+  set state.retrieval with:
+    semantic_weight is 20
+    semantic_k is 6
+    lexical_k is 10
+    final_top_k is 6
+
+  let rerank_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Preset applied: lexical-forward retrieval."
+  as notice_preset_lexical
+
+  return map:
+    "status" is "ok"
+
+flow "apply_retrieval_weight_preset_balanced": requires true
+  set state.retrieval with:
+    semantic_weight is 60
+    semantic_k is 8
+    lexical_k is 8
+    final_top_k is 6
+
+  let rerank_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Preset applied: balanced retrieval."
+  as notice_preset_balanced
+
+  return map:
+    "status" is "ok"
+
+flow "apply_retrieval_weight_preset_semantic": requires true
+  set state.retrieval with:
+    semantic_weight is 80
+    semantic_k is 10
+    lexical_k is 6
+    final_top_k is 6
+
+  let rerank_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Preset applied: semantic-forward retrieval."
+  as notice_preset_semantic
+
+  return map:
+    "status" is "ok"
+
+flow "reset_chat": requires true
+  delete "Question" where true
+  delete "QueryProfile" where true
+  delete "Answer" where true
+  delete "CitationCard" where true
+  delete "RetrievalCandidate" where true
+  delete "RetrievalCandidateView" where true
+  delete "RankingDecision" where true
+  delete "ExplainSummary" where true
+  delete "ExplainCandidate" where true
+
+  set state.chat.messages is list:
+  set state.chat.citations is list:
+  set state.loading is false
+  set state.selected_citation_source is ""
+
+  set state.drawer with:
+    has_selection is false
+
+  set state.answer with:
+    query is ""
+    answer_text is ""
+    citations is list:
+    citation_count is 0
+    trusted is false
+    trust_score is 0
+    trust_label is "No Support"
+    source_count is 0
+    confidence is 0
+    mode is "idle"
+    available is false
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Chat reset. Document index remains ready for the next question."
+  as notice_reset_chat
+
+  return map:
+    "status" is "reset"
+
+flow "set_semantic_k_4": requires true
+  let update_status is call flow "rag_engine.set_semantic_k":
+    input:
+      value is 4
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_semantic_k_8": requires true
+  let update_status is call flow "rag_engine.set_semantic_k":
+    input:
+      value is 8
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_semantic_k_12": requires true
+  let update_status is call flow "rag_engine.set_semantic_k":
+    input:
+      value is 12
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_lexical_k_4": requires true
+  let update_status is call flow "rag_engine.set_lexical_k":
+    input:
+      value is 4
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_lexical_k_8": requires true
+  let update_status is call flow "rag_engine.set_lexical_k":
+    input:
+      value is 8
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_lexical_k_12": requires true
+  let update_status is call flow "rag_engine.set_lexical_k":
+    input:
+      value is 12
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_final_top_k_3": requires true
+  let update_status is call flow "rag_engine.set_final_top_k":
+    input:
+      value is 3
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_final_top_k_5": requires true
+  let update_status is call flow "rag_engine.set_final_top_k":
+    input:
+      value is 5
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_final_top_k_8": requires true
+  let update_status is call flow "rag_engine.set_final_top_k":
+    input:
+      value is 8
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "filter_tags_all": requires true
+  set state.tag.active is list:
+    "product"
+    "policy"
+    "general"
+
+  let preview_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "filter_tags_product": requires true
+  set state.tag.active is list:
+    "product"
+
+  let preview_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "filter_tags_policy": requires true
+  set state.tag.active is list:
+    "policy"
+
+  let preview_status is call flow "rag_engine.rerun_last_query":
+    input:
+    output:
+      status
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"

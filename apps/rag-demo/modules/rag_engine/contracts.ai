@@ -1,0 +1,62 @@
+contract flow "rag_engine.initialize_defaults":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.seed_examples":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.seed_sample_corpus":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.sync_library":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.ingest_selected":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.rerun_last_query":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_diagnostics_view":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.set_semantic_k":
+  input:
+    value is number
+  output:
+    status is text
+
+contract flow "rag_engine.set_lexical_k":
+  input:
+    value is number
+  output:
+    status is text
+
+contract flow "rag_engine.set_final_top_k":
+  input:
+    value is number
+  output:
+    status is text
+
+contract flow "rag_engine.finalize_answer_state":
+  input:
+  output:
+    status is text

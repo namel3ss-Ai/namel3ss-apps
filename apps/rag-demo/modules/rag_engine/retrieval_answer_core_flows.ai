@@ -1,0 +1,499 @@
+flow "ask_question": requires true
+  try:
+    let existing_semantic_k is state.retrieval.semantic_k
+    set state.retrieval.semantic_k is existing_semantic_k
+  with catch err:
+    set state.retrieval with:
+      semantic_weight is 60
+      semantic_k is 8
+      lexical_k is 8
+      final_top_k is 6
+  set state.loading is true
+  set state.q is ""
+  try:
+    let message_query is input.message
+    if message_query is not "":
+      set state.q is message_query
+  with catch err:
+    set state.q is state.q
+  try:
+    let row_query is input.row.query
+    if state.q is "":
+      if row_query is not "":
+        set state.q is row_query
+  with catch err:
+    set state.q is state.q
+  if state.q is "":
+    set state.loading is false
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Ask a grounded question to search indexed documents."
+    as notice_empty_query
+    return map:
+      "answer_text" is ""
+      "mode" is "empty_query"
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+  set state.needs_auto_ingest is false
+  find "DocumentLibrary" where selected is true
+  for each selected_doc in documentlibrary_results:
+    if selected_doc.status is not "indexed":
+      set state.needs_auto_ingest is true
+  if state.needs_auto_ingest is true:
+    let ingest_status is call flow "rag_engine.ingest_selected":
+      input:
+      output:
+        status
+  set state.last_query is state.q
+  set state.user_message with:
+    role is "user"
+    content is state.q
+    actions is list: "copy", "expand", "view_sources"
+    attachments is list:
+    citations is list:
+    trust is true
+  try:
+    let history is state.chat.messages
+    set state.chat.messages is list append history with state.user_message
+  with catch err:
+    set state.chat.messages is list:
+      state.user_message
+  delete "RetrievalCandidate" where true
+  delete "RetrievalCandidateView" where true
+  delete "RankingDecision" where true
+  delete "ExplainSummary" where true
+  delete "ExplainCandidate" where true
+  find "Question" where true
+  let question_count is list length of question_results
+  set state.query_id is question_count + 1
+  set state.query_route is "lookup"
+  set state.query_keywords is list:
+    "document"
+    "source"
+    "evidence"
+  if state.q is "compare indexing and retrieval in this corpus":
+    set state.query_route is "comparison"
+    set state.query_keywords is list:
+      "compare"
+      "indexing"
+      "retrieval"
+      "corpus"
+  else:
+    if state.q is "summarize the strongest evidence":
+      set state.query_route is "summary"
+      set state.query_keywords is list:
+        "summarize"
+        "strongest"
+        "evidence"
+        "summary"
+    else:
+      if state.q is "what does deterministic replay mean here" or state.q is "what is deterministic replay":
+        set state.query_route is "definition"
+        set state.query_keywords is list:
+          "deterministic"
+          "replay"
+          "candidate"
+          "ordering"
+      else:
+        if state.q is "runtime enforces citations":
+          set state.query_route is "definition"
+          set state.query_keywords is list:
+            "runtime"
+            "enforces"
+            "citations"
+            "trust"
+  create "Question" with map:
+    "id" is state.query_id
+    "query" is state.q
+    "route" is state.query_route
+    "source_scope" is "selected_documents"
+  as question_row
+  find "DocumentLibrary" where selected is true
+  let selected_docs is documentlibrary_results
+  set state.scope_docs is list:
+  set state.active_upload_ids is list:
+  try:
+    let active_tags is state.tag.active
+    set state.active_tags is active_tags
+  with catch err:
+    set state.active_tags is list:
+      "product"
+      "policy"
+      "general"
+  let active_tag_count is list length of state.active_tags
+  for each doc in selected_docs:
+    set state.include_doc is false
+    if active_tag_count is 0:
+      set state.include_doc is true
+    else:
+      for each active_tag in state.active_tags:
+        if doc.primary_tag is active_tag:
+          set state.include_doc is true
+    if state.include_doc is true:
+      set state.scope_docs is list append state.scope_docs with doc
+      set state.active_upload_ids is list append state.active_upload_ids with doc.upload_id
+  create "QueryProfile" with map:
+    "id" is state.query_id
+    "raw_query" is state.q
+    "normalized_query" is state.q
+    "route" is state.query_route
+    "keywords" is state.query_keywords
+    "active_documents" is state.active_upload_ids
+    "active_tags" is state.active_tags
+  as profile_row
+  set state.answer_text is ""
+  set state.answer_mode is "no_selection"
+  set state.answer_citations is list:
+  set state.answer_confidence is 0
+  set state.answer_source_count is 0
+  set state.answer_trust_score is 0
+  set state.answer_trust_label is "No Support"
+  set state.answer_trusted is false
+  set state.answer.query is state.q
+  set state.answer.answer_text is ""
+  set state.answer.citations is list:
+  set state.answer.trusted is false
+  set state.answer.trust_score is 0
+  set state.answer.source_count is 0
+  set state.answer.mode is "no_selection"
+  let scoped_count is list length of state.scope_docs
+  if scoped_count is 0:
+    set state.answer_text is "No selected sources match your active tag filters."
+    set state.answer_mode is "no_selection"
+  else:
+    let chunks is list:
+    try:
+      let known_index is state.index
+      let chunks is map get known_index key "chunks"
+    with catch err:
+      set chunks is list:
+    set state.active_chunks is list:
+    for each chunk in chunks:
+      for each doc in state.scope_docs:
+        if doc.status is "indexed":
+          if doc.upload_id is chunk.upload_id:
+            set state.chunk_row with:
+              chunk_id is chunk.chunk_id
+              upload_id is chunk.upload_id
+              document_id is chunk.document_id
+              source_name is chunk.source_name
+              page_number is chunk.page_number
+              chunk_index is chunk.chunk_index
+              ingestion_phase is chunk.ingestion_phase
+              snippet is chunk.text
+              keywords is chunk.keywords
+              source_weight is doc.weight
+              tag is doc.primary_tag
+            set state.active_chunks is list append state.active_chunks with state.chunk_row
+    let active_chunk_count is list length of state.active_chunks
+    if active_chunk_count is 0:
+      set state.answer_text is "No indexed chunks in the active scope. Click Create index, then ask again."
+      set state.answer_mode is "no_indexed_chunks"
+    else:
+      set state.active_index with:
+        chunks is state.active_chunks
+      set state.semantic_rows is list:
+      try:
+        let retrieval_out is call pipeline "retrieval":
+          input:
+            query is state.q
+            limit is 50
+            tier is "auto"
+            index is state.active_index
+          output:
+            report
+        let retrieval_report is map get retrieval_out key "report"
+        let semantic_results is map get retrieval_report key "results"
+        set state.semantic_rank_counter is 0
+        for each result in semantic_results:
+          set state.semantic_rank_counter is state.semantic_rank_counter + 1
+          set state.chunk_id is result.chunk_id
+          set state.semantic_row with:
+            chunk_id is state.chunk_id
+            upload_id is ""
+            document_id is ""
+            source_name is ""
+            page_number is 1
+            chunk_index is 1
+            ingestion_phase is "indexed"
+            snippet is ""
+            semantic_rank is state.semantic_rank_counter
+            semantic_score is 101 - state.semantic_rank_counter
+            source_weight is 1
+            tag is "general"
+          for each chunk in state.active_chunks:
+            if chunk.chunk_id is state.chunk_id:
+              set state.semantic_row with:
+                chunk_id is chunk.chunk_id
+                upload_id is chunk.upload_id
+                document_id is chunk.document_id
+                source_name is chunk.source_name
+                page_number is chunk.page_number
+                chunk_index is chunk.chunk_index
+                ingestion_phase is chunk.ingestion_phase
+                snippet is chunk.snippet
+                semantic_rank is state.semantic_rank_counter
+                semantic_score is 101 - state.semantic_rank_counter
+                source_weight is chunk.source_weight
+                tag is chunk.tag
+          set state.semantic_rows is list append state.semantic_rows with state.semantic_row
+      with catch err:
+        set state.semantic_rows is list:
+      order state.semantic_rows by semantic_score from highest to lowest
+      keep first state.retrieval.semantic_k items
+      set state.lexical_rows is list:
+      set state.lexical_rank_counter is 0
+      for each chunk in state.active_chunks:
+        set state.hit_count is 0
+        for each qk in state.query_keywords:
+          for each ck in chunk.keywords:
+            if qk is ck:
+              set state.hit_count is state.hit_count + 1
+        if state.hit_count is greater than 0:
+          set state.lexical_rank_counter is state.lexical_rank_counter + 1
+          set state.lex_row with:
+            chunk_id is chunk.chunk_id
+            upload_id is chunk.upload_id
+            document_id is chunk.document_id
+            source_name is chunk.source_name
+            page_number is chunk.page_number
+            chunk_index is chunk.chunk_index
+            ingestion_phase is chunk.ingestion_phase
+            snippet is chunk.snippet
+            lexical_rank is state.lexical_rank_counter
+            lexical_hits is state.hit_count
+            lexical_score is state.hit_count
+            source_weight is chunk.source_weight
+            tag is chunk.tag
+          set state.lexical_rows is list append state.lexical_rows with state.lex_row
+      order state.lexical_rows by lexical_hits from highest to lowest
+      keep first state.retrieval.lexical_k items
+      set state.semantic_count is list length of state.semantic_rows
+      set state.lexical_count is list length of state.lexical_rows
+      for each sem in state.semantic_rows:
+        create "RetrievalCandidate" with map:
+          "query_id" is state.query_id
+          "mode" is "semantic"
+          "rank" is sem.semantic_rank
+          "chunk_id" is sem.chunk_id
+          "document_id" is sem.document_id
+          "source_name" is sem.source_name
+          "source_id" is sem.upload_id
+          "tag" is sem.tag
+          "page_number" is sem.page_number
+          "chunk_index" is sem.chunk_index
+          "ingestion_phase" is sem.ingestion_phase
+          "tier" is "semantic"
+          "semantic_rank" is sem.semantic_rank
+          "lexical_rank" is 999
+          "lexical_hits" is 0
+          "semantic_score" is sem.semantic_score
+          "lexical_score" is 0
+          "source_weight" is sem.source_weight
+          "merged_score" is sem.semantic_score
+          "selected" is false
+          "reason" is "Semantic candidate"
+          "snippet" is sem.snippet
+        as semantic_candidate
+      for each lex in state.lexical_rows:
+        create "RetrievalCandidate" with map:
+          "query_id" is state.query_id
+          "mode" is "lexical"
+          "rank" is lex.lexical_rank
+          "chunk_id" is lex.chunk_id
+          "document_id" is lex.document_id
+          "source_name" is lex.source_name
+          "source_id" is lex.upload_id
+          "tag" is lex.tag
+          "page_number" is lex.page_number
+          "chunk_index" is lex.chunk_index
+          "ingestion_phase" is lex.ingestion_phase
+          "tier" is "lexical"
+          "semantic_rank" is 999
+          "lexical_rank" is lex.lexical_rank
+          "lexical_hits" is lex.lexical_hits
+          "semantic_score" is 0
+          "lexical_score" is lex.lexical_score
+          "source_weight" is lex.source_weight
+          "merged_score" is lex.lexical_score
+          "selected" is false
+          "reason" is "Lexical candidate"
+          "snippet" is lex.snippet
+        as lexical_candidate
+      set state.semantic_weight is state.retrieval.semantic_weight
+      set state.lexical_weight is 100 - state.semantic_weight
+      set state.merged_rows is list:
+      for each sem in state.semantic_rows:
+        set state.lexical_hits is 0
+        set state.lexical_rank is 999
+        for each lex in state.lexical_rows:
+          if lex.chunk_id is sem.chunk_id:
+            set state.lexical_hits is lex.lexical_hits
+            set state.lexical_rank is lex.lexical_rank
+        set state.semantic_component is (sem.semantic_score * state.semantic_weight) / 100
+        set state.lexical_component is (state.lexical_hits * state.lexical_weight) / 100
+        set state.merged_score is state.semantic_component + state.lexical_component + (sem.source_weight * 2)
+        set state.tier is "semantic_only"
+        if state.lexical_hits is greater than 0:
+          set state.tier is "hybrid_match"
+        set state.merged_row with:
+          chunk_id is sem.chunk_id
+          upload_id is sem.upload_id
+          document_id is sem.document_id
+          source_name is sem.source_name
+          page_number is sem.page_number
+          chunk_index is sem.chunk_index
+          ingestion_phase is sem.ingestion_phase
+          snippet is sem.snippet
+          tag is sem.tag
+          tier is state.tier
+          semantic_rank is sem.semantic_rank
+          lexical_rank is state.lexical_rank
+          lexical_hits is state.lexical_hits
+          semantic_score is sem.semantic_score
+          lexical_score is state.lexical_hits
+          source_weight is sem.source_weight
+          merged_score is state.merged_score
+        set state.merged_rows is list append state.merged_rows with state.merged_row
+      for each lex in state.lexical_rows:
+        set state.exists is false
+        for each merged in state.merged_rows:
+          if merged.chunk_id is lex.chunk_id:
+            set state.exists is true
+        if state.exists is false:
+          set state.merged_score is (lex.lexical_score * state.lexical_weight) / 100 + (lex.source_weight * 2)
+          set state.merged_row with:
+            chunk_id is lex.chunk_id
+            upload_id is lex.upload_id
+            document_id is lex.document_id
+            source_name is lex.source_name
+            page_number is lex.page_number
+            chunk_index is lex.chunk_index
+            ingestion_phase is lex.ingestion_phase
+            snippet is lex.snippet
+            tag is lex.tag
+            tier is "lexical_only"
+            semantic_rank is 999
+            lexical_rank is lex.lexical_rank
+            lexical_hits is lex.lexical_hits
+            semantic_score is 0
+            lexical_score is lex.lexical_score
+            source_weight is lex.source_weight
+            merged_score is state.merged_score
+          set state.merged_rows is list append state.merged_rows with state.merged_row
+      order state.merged_rows by merged_score from highest to lowest
+      set state.rank_counter is 0
+      set state.final_rows is list:
+      for each ranked in state.merged_rows:
+        set state.rank_counter is state.rank_counter + 1
+        set state.selected is false
+        if state.rank_counter is at most state.retrieval.final_top_k:
+          set state.selected is true
+          set state.final_rows is list append state.final_rows with ranked
+        set state.reason is "Ranked by weighted semantic and lexical signals."
+        if ranked.tier is "hybrid_match":
+          set state.reason is "Semantic and lexical overlap agree."
+        else:
+          if ranked.tier is "lexical_only":
+            set state.reason is "Lexical evidence only."
+        create "RankingDecision" with map:
+          "query_id" is state.query_id
+          "rank" is state.rank_counter
+          "chunk_id" is ranked.chunk_id
+          "tier" is ranked.tier
+          "merged_score" is ranked.merged_score
+          "selected" is state.selected
+          "reason" is state.reason
+        as ranking_row
+        create "RetrievalCandidate" with map:
+          "query_id" is state.query_id
+          "mode" is "final"
+          "rank" is state.rank_counter
+          "chunk_id" is ranked.chunk_id
+          "document_id" is ranked.document_id
+          "source_name" is ranked.source_name
+          "source_id" is ranked.upload_id
+          "tag" is ranked.tag
+          "page_number" is ranked.page_number
+          "chunk_index" is ranked.chunk_index
+          "ingestion_phase" is ranked.ingestion_phase
+          "tier" is ranked.tier
+          "semantic_rank" is ranked.semantic_rank
+          "lexical_rank" is ranked.lexical_rank
+          "lexical_hits" is ranked.lexical_hits
+          "semantic_score" is ranked.semantic_score
+          "lexical_score" is ranked.lexical_score
+          "source_weight" is ranked.source_weight
+          "merged_score" is ranked.merged_score
+          "selected" is state.selected
+          "reason" is state.reason
+          "snippet" is ranked.snippet
+        as final_candidate
+        create "ExplainCandidate" with map:
+          "query" is state.q
+          "order" is state.rank_counter
+          "chunk_id" is ranked.chunk_id
+          "ingestion_phase" is ranked.ingestion_phase
+          "keyword_overlap" is ranked.lexical_hits
+          "page_number" is ranked.page_number
+          "chunk_index" is ranked.chunk_index
+          "decision" is state.reason
+          "reason" is state.reason
+        as explain_row
+      let finalize_status is call flow "rag_engine.finalize_answer_state":
+        input:
+        output:
+          status
+  set state.loading is false
+  if state.answer_text is "":
+    set state.answer_text is "No grounded support found in indexed sources for this query."
+  set state.answer.query is state.q
+  set state.answer.answer_text is state.answer_text
+  set state.answer.citations is state.answer_citations
+  set state.answer.trusted is state.answer_trusted
+  set state.answer.trust_score is state.answer_trust_score
+  set state.answer.source_count is state.answer_source_count
+  set state.answer.mode is state.answer_mode
+  set state.assistant_has_sources is false
+  let assistant_citation_count is list length of state.answer_citations
+  if assistant_citation_count is greater than 0:
+    set state.assistant_has_sources is true
+  set state.assistant_message with:
+    role is "assistant"
+    content is state.answer_text
+    actions is list:
+      "copy"
+      "expand"
+      "view_sources"
+    attachments is list:
+    citations is state.answer_citations
+    trust is state.assistant_has_sources
+  try:
+    let history_after_query is state.chat.messages
+    set state.chat.messages is list append history_after_query with state.assistant_message
+  with catch err:
+    set state.chat.messages is list:
+      state.assistant_message
+  delete "Notice" where true
+  if state.answer_mode is "no_selection":
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Select and index at least one source before asking."
+    as notice_no_selection
+  else:
+    if state.answer_mode is "no_indexed_chunks":
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "No indexed chunks in active scope. Run Create index, then ask again."
+      as notice_no_chunks
+    else:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Answer ready with inline citations and trust indicator."
+      as notice_answer
+  return map:
+    "answer_text" is state.answer_text
+    "mode" is state.answer_mode
