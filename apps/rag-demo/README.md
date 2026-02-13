@@ -1,4 +1,4 @@
-# RAG Demo (Namel3ss 0.1.0a18)
+# RAG Demo (Namel3ss 0.1.0a20)
 
 Premium deterministic RAG demo built in Namel3ss with:
 
@@ -9,7 +9,7 @@ Premium deterministic RAG demo built in Namel3ss with:
 
 ## Dependency Pin
 
-- `namel3ss==0.1.0a18` (see `pyproject.toml`)
+- `namel3ss==0.1.0a20` (see `pyproject.toml`)
 
 ## Quickstart
 
@@ -18,7 +18,7 @@ cd apps/rag-demo
 python3.14 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip
-python -m pip install "namel3ss==0.1.0a18"
+python -m pip install "namel3ss==0.1.0a20"
 python -m pip install pytest
 python tools/ensure_provider_manifests.py
 python -m namel3ss app.ai check
@@ -74,6 +74,12 @@ In Studio, the diagnostics slot shows:
 - retrieval tuning effects
 - filtered candidate tables
 - ranking rationale and explain records
+
+## Known Runtime Limits
+
+Platform-level runtime limits and Namel3ss-only feasibility notes are tracked in:
+
+- `apps/rag-demo/LIMITATIONS_REPORT.md`
 
 ## What To Expect In UX
 

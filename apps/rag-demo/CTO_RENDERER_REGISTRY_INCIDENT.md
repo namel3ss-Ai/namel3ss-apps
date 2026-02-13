@@ -10,7 +10,8 @@ The `rag-demo` workspace app compiles successfully but intermittently fails in b
 This is primarily a runtime consistency problem, not a parser/lint issue in `.ai` files.
 
 ## Environment
-- Runtime: `namel3ss 0.1.0a19`
+- Incident runtime: `namel3ss 0.1.0a19`
+- Current target runtime: `namel3ss 0.1.0a20`
 - Host: Windows 11
 - App paths involved:
   - `apps/rag-demo/app.ai`
@@ -39,15 +40,24 @@ This is primarily a runtime consistency problem, not a parser/lint issue in `.ai
 1. Added deterministic RAG workspace package under:
    - `apps/rag-demo/examples/rag_workspace/modules/rag/*.ai`
    - `apps/rag-demo/examples/rag_workspace/app.ai`
-2. Upgraded dependency to `namel3ss==0.1.0a19` in `apps/rag-demo/pyproject.toml`.
+2. Upgraded dependency to `namel3ss==0.1.0a20` in `apps/rag-demo/pyproject.toml`.
 3. Reduced risky renderer usage and stabilized action wiring for citation open flow.
 4. Added deterministic citation id in record model (`id = citation_id`).
 5. Removed temporary non-`.ai` test scaffolding introduced during debugging.
 
+## Namel3ss-Only Constraint
+Per implementation policy, changes must be authored in Namel3ss DSL where possible.  
+The runtime/process limitations listed above are platform responsibilities and cannot be fully implemented inside `app.ai` alone.
+
+See `apps/rag-demo/LIMITATIONS_REPORT.md` for:
+1. feasibility status per limitation,
+2. what can be done in Namel3ss today,
+3. what must be fixed in runtime/CLI.
+
 ## Remaining Platform Risks
 1. Renderer registry failures can persist despite valid compile/lint status.
-2. Runtime process collisions on same port remain a major operational hazard.
-3. Missing registry observability prevents fast root-cause confirmation.
+2. Platform-level registry endpoint stability is still not guaranteed.
+3. Manifest drift is now detectable quickly but still requires platform fixes to prevent.
 
 ## Recommendations
 1. Enforce strict single-process lock per `(host, port)` runtime instance.
