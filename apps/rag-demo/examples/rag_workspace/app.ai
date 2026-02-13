@@ -1,0 +1,154 @@
+spec is "1.0"
+
+capabilities:
+  uploads
+  ui.theming
+  ui_layout
+
+use "rag" as rag
+
+contract flow "rag.ingest_latest":
+  input:
+  output:
+    status is text
+
+contract flow "rag.answer_query":
+  input:
+    query is text
+    message is text
+  output:
+    status is text
+    source_count is number
+
+contract flow "rag.open_citation":
+  input:
+    citation_id is text
+    source_id is text
+  output:
+    status is text
+
+contract flow "rag.open_sources":
+  input:
+  output:
+    status is text
+
+contract flow "rag.close_sources":
+  input:
+  output:
+    status is text
+
+contract flow "rag.run_eval_smoke":
+  input:
+    query is text
+  output:
+    status is text
+
+page "home":
+  layout:
+    header:
+      title is "RAG Workspace"
+      text is "Deterministic RAG workspace with ingest, chat, citations, and source preview."
+      text is "Upload documents, ingest, ask grounded questions, and verify sources."
+
+    sidebar_left:
+      section "Knowledge":
+        text is "Upload a file and ingest it."
+        upload intake:
+          accept is "application/pdf,text/plain"
+          multiple is true
+          required is false
+          label is "Upload document"
+          preview is false
+        row:
+          column:
+            button "Create index":
+              calls flow "rag.ingest_latest"
+          column:
+            button "Open sources":
+              calls flow "rag.open_sources"
+        table is rag.Document:
+          columns:
+            include document_id
+            include upload_id
+            include `title`
+            include status
+            include quality
+          pagination:
+            page_size is 10
+          empty_state: hidden
+
+    main:
+      section "Chat":
+        chat:
+          messages from is state.chat.messages
+          composer calls flow "rag.answer_query"
+          thinking when is state.chat.thinking
+        trust_indicator from is state.chat.thinking
+
+      section "Answers":
+        table is rag.Answer:
+          columns:
+            include query
+            include status
+            include confidence
+            include coverage
+            include source_count
+          pagination:
+            page_size is 10
+          empty_state: hidden
+
+      section "Evaluation":
+        button "Run smoke eval":
+          calls flow "rag.run_eval_smoke"
+        table is rag.EvalRun:
+          columns:
+            include query
+            include status
+            include source_count
+            include coverage
+          pagination:
+            page_size is 10
+          empty_state: hidden
+
+      section "Explain":
+        table is rag.ExplainEntry:
+          columns:
+            include stage
+            include detail
+          pagination:
+            page_size is 10
+          empty_state: hidden
+
+    drawer_right:
+      section "Sources":
+        list is rag.Citation:
+          variant is "two_line"
+          item:
+            primary is source_title
+            secondary is chunk_id
+            meta is snippet
+          actions:
+            action "Open":
+              calls flow "rag.open_citation"
+          empty_state: hidden
+
+        table is rag.Citation:
+          columns:
+            include citation_id
+            include document_id
+            include page_number
+            include chunk_id
+            include source_id
+            include source_title
+            include snippet
+          empty_state: hidden
+        button "Close sources":
+          calls flow "rag.close_sources"
+
+    footer:
+      row:
+        column:
+          button "Open sources":
+            calls flow "rag.open_sources"
+        column:
+          text is "Deterministic RAG mode"

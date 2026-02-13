@@ -1,0 +1,225 @@
+spec is "1.0"
+
+flow "answer_query": requires true
+  set state.chat.thinking is true
+
+  let query is ""
+  let has_query is false
+  try:
+    set query is input.query
+    set has_query is true
+  with catch err:
+    set has_query is false
+
+  if has_query is false:
+    try:
+      set query is input.message
+      set has_query is true
+    with catch err:
+      set has_query is false
+
+  if has_query is false:
+    try:
+      set query is input.values.query
+      set has_query is true
+    with catch err:
+      set has_query is false
+
+  if has_query is false or query is null or query is "":
+    set state.chat.messages is list:
+      map:
+        "role" is "assistant"
+        "content" is "No query provided."
+    set state.chat.citations is list:
+    set state.chat.thinking is false
+    return map:
+      "status" is "invalid_query"
+      "source_count" is 0
+
+  let limit is list length of list: 1, 1, 1, 1, 1, 1
+  let results is list:
+  let has_input_results is false
+  try:
+    set results is input.results
+    set has_input_results is true
+  with catch err:
+    set has_input_results is false
+
+  if has_input_results is false:
+    try:
+      let out is call pipeline "retrieval":
+        input:
+          query is query
+          limit is limit
+        output:
+          report
+      let report is out.report
+      set results is report.results
+    with catch err:
+      set results is list:
+
+  let result_count is list length of results
+
+  let coverage is 0
+  if limit is greater than 0:
+    set coverage is result_count / limit
+
+  let citations is list:
+  for each result in results:
+    let doc_id is ""
+    try:
+      set doc_id is result.upload_id
+    with catch err:
+      set doc_id is ""
+    if doc_id is null or doc_id is "":
+      try:
+        set doc_id is result.document_id
+      with catch err:
+        set doc_id is ""
+    if doc_id is null or doc_id is "":
+      set doc_id is "unknown-document"
+
+    let source_title is doc_id
+    try:
+      let maybe_source_title is result.source_title
+      if maybe_source_title is not "":
+        set source_title is maybe_source_title
+    with catch err:
+      set source_title is source_title
+
+    find "Document" where upload_id is doc_id
+    let doc_count is list length of document_results
+    if doc_count is greater than 0:
+      let doc_index is doc_count - 1
+      let doc_row is list get document_results at doc_index
+      set doc_id is doc_row.document_id
+      set source_title is doc_row.`title`
+
+    let page_number is 1
+    try:
+      set page_number is result.page_number
+    with catch err:
+      set page_number is 1
+
+    let citation_id is ""
+    try:
+      set citation_id is result.chunk_id
+    with catch err:
+      set citation_id is ""
+    if citation_id is null or citation_id is "":
+      try:
+        set citation_id is result.source_id
+      with catch err:
+        set citation_id is ""
+    if citation_id is null or citation_id is "":
+      set citation_id is doc_id
+
+    let source_id is citation_id
+    try:
+      let maybe_source_id is result.source_id
+      if maybe_source_id is not "":
+        set source_id is maybe_source_id
+    with catch err:
+      set source_id is source_id
+
+    let snippet is ""
+    try:
+      set snippet is result.text
+    with catch err:
+      set snippet is ""
+    if snippet is null or snippet is "":
+      try:
+        set snippet is result.snippet
+      with catch err:
+        set snippet is ""
+
+    let citation_row is map:
+      "title" is source_title
+      "id" is citation_id
+      "citation_id" is citation_id
+      "query" is query
+      "document_id" is doc_id
+      "page_number" is page_number
+      "chunk_id" is citation_id
+      "source_id" is source_id
+      "source_title" is source_title
+      "snippet" is snippet
+      "tag" is "general"
+    set citations is list append citations with citation_row
+
+    set state.citation_record with:
+      id is citation_id
+      citation_id is citation_id
+      query is query
+      document_id is doc_id
+      page_number is page_number
+      chunk_id is citation_id
+      source_id is source_id
+      source_title is source_title
+      snippet is snippet
+    create "Citation" with state.citation_record as citation_record
+
+  let response is "No grounded answer available."
+  let answer_status is "no_answer"
+  if result_count is greater than 0:
+    let first_result is list get results at 0
+    try:
+      set response is first_result.text
+    with catch err:
+      set response is "No grounded answer available."
+    if response is null or response is "":
+      try:
+        set response is first_result.snippet
+      with catch err:
+        set response is "No grounded answer available."
+    set answer_status is "answered"
+
+  let confidence is 0
+  if answer_status is "answered":
+    set confidence is coverage
+
+  set state.chat.messages is list:
+    map:
+      "role" is "user"
+      "content" is query
+    map:
+      "role" is "assistant"
+      "content" is response
+
+  set state.chat.citations is citations
+  set state.chat.thinking is false
+  set state.chat.trust is coverage
+  set state.chat.trust_status is answer_status
+  set state.chat.trust_source_count is result_count
+
+  if result_count is greater than 0:
+    let first_citation is list get citations at 0
+    set state.ui.preview_source is map:
+      "document_id" is first_citation.document_id
+      "page_number" is first_citation.page_number
+      "chunk_id" is first_citation.chunk_id
+      "snippet" is first_citation.snippet
+      "source_title" is first_citation.source_title
+    set state.ui.show_drawer is true
+
+  set state.answer_record with:
+    query is query
+    response is response
+    status is answer_status
+    confidence is confidence
+    coverage is coverage
+    source_count is result_count
+  create "Answer" with state.answer_record as answer_record
+
+  set state.explain_entry with:
+    stage is "retrieval"
+    detail is map:
+      "query" is query
+      "limit" is limit
+      "result_count" is result_count
+      "coverage" is coverage
+  create "ExplainEntry" with state.explain_entry as explain_entry
+
+  return map:
+    "status" is answer_status
+    "source_count" is result_count

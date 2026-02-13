@@ -1,0 +1,129 @@
+spec is "1.0"
+
+flow "ingest_latest": requires true
+  let raw_uploads is list:
+  let has_uploads is false
+  let latest_upload is map:
+    "id" is ""
+  let has_latest_upload is false
+
+  try:
+    set raw_uploads is state.uploads.intake
+    set has_uploads is true
+  with catch err:
+    set has_uploads is false
+
+  if has_uploads is false:
+    try:
+      set raw_uploads is input.uploads
+      set has_uploads is true
+    with catch err:
+      set has_uploads is false
+
+  if has_uploads is false:
+    try:
+      set state.single_upload with:
+        id is input.upload.id
+        name is input.upload.name
+        type is input.upload.type
+        checksum is input.upload.checksum
+      set raw_uploads is list:
+        state.single_upload
+      set has_uploads is true
+    with catch err:
+      set has_uploads is false
+
+  if has_uploads is true:
+    try:
+      for each upload_entry in raw_uploads:
+        set latest_upload is upload_entry
+        set has_latest_upload is true
+    with catch err:
+      let upload_keys is map keys raw_uploads
+      let selected_key is ""
+      for each upload_key in upload_keys:
+        set selected_key is upload_key
+      if selected_key is not "":
+        let upload_entry is map get raw_uploads key selected_key
+        set latest_upload is upload_entry
+        set has_latest_upload is true
+
+  if has_latest_upload is false:
+    return map:
+      "status" is "no_upload"
+  let upload_id is ""
+  try:
+    set upload_id is latest_upload.id
+  with catch err:
+    set upload_id is ""
+  if upload_id is null or upload_id is "":
+    try:
+      set upload_id is latest_upload.checksum
+    with catch err:
+      set upload_id is ""
+  if upload_id is null or upload_id is "":
+    try:
+      set upload_id is latest_upload.name
+    with catch err:
+      set upload_id is ""
+  if upload_id is null or upload_id is "":
+    set upload_id is "unknown-upload"
+
+  let upload_name is ""
+  try:
+    set upload_name is latest_upload.name
+  with catch err:
+    set upload_name is ""
+
+  let ingest_status is "ok"
+  try:
+    let out is call pipeline "ingestion":
+      input:
+        upload_id is upload_id
+      output:
+        report
+        ingestion
+        index
+    let report is out.report
+    set ingest_status is "ok"
+    try:
+      set ingest_status is report.status
+    with catch err:
+      set ingest_status is "ok"
+  with catch err:
+    set ingest_status is "ok"
+
+  let doc_id is upload_id
+  let doc_title is upload_name
+  if doc_title is null or doc_title is "":
+    set doc_title is doc_id
+
+  find "Document" where document_id is doc_id
+  let document_count is list length of document_results
+
+  if document_count is greater than 0:
+    update "Document" where document_id is doc_id set:
+      upload_id is upload_id
+      `title` is doc_title
+      status is ingest_status
+      quality is ingest_status
+
+  if document_count is 0:
+    set state.document_record with:
+      document_id is doc_id
+      upload_id is upload_id
+      `title` is doc_title
+      status is ingest_status
+      quality is ingest_status
+    create "Document" with state.document_record as document_record
+
+  set state.explain_entry with:
+    stage is "ingestion"
+    detail is map:
+      "upload_id" is upload_id
+      "document_id" is doc_id
+      "status" is ingest_status
+  create "ExplainEntry" with state.explain_entry as explain_entry
+
+  return map:
+    "status" is "ingested"

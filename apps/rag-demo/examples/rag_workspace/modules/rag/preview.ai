@@ -1,0 +1,169 @@
+spec is "1.0"
+
+flow "open_sources": requires true
+  let citations is list:
+  try:
+    set citations is state.chat.citations
+  with catch err:
+    set citations is list:
+
+  let citation_count is list length of citations
+  if citation_count is greater than 0:
+    let first_citation is list get citations at 0
+    set state.chat.selected_citation_id is first_citation.citation_id
+    set state.ui.preview_source is map:
+      "document_id" is first_citation.document_id
+      "page_number" is first_citation.page_number
+      "chunk_id" is first_citation.chunk_id
+      "snippet" is first_citation.snippet
+      "source_title" is first_citation.source_title
+
+  set state.ui.show_drawer is true
+  return map:
+    "status" is "opened"
+
+flow "close_sources": requires true
+  set state.ui.show_drawer is false
+  return map:
+    "status" is "closed"
+
+flow "open_citation": requires true
+  let citation_id is ""
+  let has_citation_id is false
+  let has_row is false
+  let row_citation is map:
+    "citation_id" is ""
+
+  try:
+    set row_citation is input.row
+    set has_row is true
+  with catch err:
+    set has_row is false
+
+  try:
+    set citation_id is input.citation_id
+    set has_citation_id is true
+  with catch err:
+    set has_citation_id is false
+
+  if has_citation_id is false:
+    try:
+      set citation_id is input.source_id
+      set has_citation_id is true
+    with catch err:
+      set has_citation_id is false
+
+  if has_citation_id is false and has_row is true:
+    try:
+      set citation_id is row_citation.citation_id
+      set has_citation_id is true
+    with catch err:
+      set has_citation_id is false
+
+  if has_citation_id is false and has_row is true:
+    try:
+      set citation_id is row_citation.source_id
+      set has_citation_id is true
+    with catch err:
+      set has_citation_id is false
+
+  if has_citation_id is false and has_row is true:
+    try:
+      set citation_id is row_citation.chunk_id
+      set has_citation_id is true
+    with catch err:
+      set has_citation_id is false
+
+  if has_citation_id is false or citation_id is "":
+    return map:
+      "status" is "missing_citation"
+
+  let citations is list:
+  try:
+    set citations is state.chat.citations
+  with catch err:
+    set citations is list:
+
+  let selected_rows is filter citations with item as citation:
+    citation.citation_id is citation_id
+
+  let selected_count is list length of selected_rows
+  if selected_count is 0:
+    set selected_rows is filter citations with item as citation:
+      citation.source_id is citation_id
+    set selected_count is list length of selected_rows
+
+  if selected_count is 0 and has_row is true:
+    let row_document_id is ""
+    try:
+      set row_document_id is row_citation.document_id
+    with catch err:
+      set row_document_id is ""
+    if row_document_id is null or row_document_id is "":
+      set row_document_id is "unknown-document"
+
+    let row_page_number is 1
+    try:
+      set row_page_number is row_citation.page_number
+    with catch err:
+      set row_page_number is 1
+
+    let row_chunk_id is citation_id
+    try:
+      let maybe_chunk_id is row_citation.chunk_id
+      if maybe_chunk_id is not "":
+        set row_chunk_id is maybe_chunk_id
+    with catch err:
+      set row_chunk_id is row_chunk_id
+
+    let row_snippet is ""
+    try:
+      set row_snippet is row_citation.snippet
+    with catch err:
+      set row_snippet is ""
+
+    let row_source_title is row_document_id
+    try:
+      let maybe_source_title is row_citation.source_title
+      if maybe_source_title is not "":
+        set row_source_title is maybe_source_title
+    with catch err:
+      set row_source_title is row_source_title
+
+    set selected_rows is list:
+      map:
+        "id" is citation_id
+        "citation_id" is citation_id
+        "document_id" is row_document_id
+        "page_number" is row_page_number
+        "chunk_id" is row_chunk_id
+        "snippet" is row_snippet
+        "source_title" is row_source_title
+        "source_id" is citation_id
+    set selected_count is list length of selected_rows
+
+  if selected_count is 0:
+    return map:
+      "status" is "missing_citation"
+
+  let selected_row is list get selected_rows at 0
+  set state.chat.selected_citation_id is selected_row.citation_id
+  set state.ui.preview_source is map:
+    "document_id" is selected_row.document_id
+    "page_number" is selected_row.page_number
+    "chunk_id" is selected_row.chunk_id
+    "snippet" is selected_row.snippet
+    "source_title" is selected_row.source_title
+  set state.ui.show_drawer is true
+
+  set state.explain_entry with:
+    stage is "preview"
+    detail is map:
+      "citation_id" is selected_row.citation_id
+      "document_id" is selected_row.document_id
+      "page_number" is selected_row.page_number
+      "chunk_id" is selected_row.chunk_id
+  create "ExplainEntry" with state.explain_entry as explain_entry
+
+  return map:
+    "status" is "opened"

@@ -5,7 +5,7 @@ description = "Polished deterministic RAG demo built with Namel3ss"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-  "namel3ss==0.1.0a18",
+  "namel3ss==0.1.0a19",
 ]
 
 [project.optional-dependencies]
