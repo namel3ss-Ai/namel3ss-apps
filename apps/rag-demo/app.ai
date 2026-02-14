@@ -127,6 +127,10 @@ page "Chat":
             trust_indicator from is state.answer.trusted
 
     main:
+      section "Run Identity":
+        text is "Target app path: apps/rag-demo/app.ai"
+        text is "Use this explicit path in all n3 commands."
+
       section "How can I help you today?":
         row:
           column:
@@ -192,6 +196,10 @@ page "Library":
               item:
                 primary is message
               empty_state: hidden
+        column:
+          section "Run Target":
+            text is "Repo-root check: n3 check apps/rag-demo/app.ai"
+            text is "Repo-root preview: n3 run apps/rag-demo/app.ai --port 7360 --no-open"
 
     main:
       section "Upload and Index":

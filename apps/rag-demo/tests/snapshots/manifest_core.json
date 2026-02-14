@@ -38,7 +38,7 @@
     }
   ],
   "composer_action": {
-    "id": "page.chat.composer.2.1.0.2.composer",
+    "id": "page.chat.composer.2.2.0.2.composer",
     "type": "call_flow",
     "flow": "rag_engine.ask_question"
   },

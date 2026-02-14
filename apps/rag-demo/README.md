@@ -1,4 +1,4 @@
-# RAG Demo (Namel3ss 0.1.0a20)
+# RAG Demo (Namel3ss 0.1.0a21)
 
 Premium deterministic RAG demo built in Namel3ss with:
 
@@ -9,20 +9,19 @@ Premium deterministic RAG demo built in Namel3ss with:
 
 ## Dependency Pin
 
-- `namel3ss==0.1.0a20` (see `pyproject.toml`)
+- `namel3ss==0.1.0a21` (see `pyproject.toml`)
 
 ## Quickstart
 
 ```bash
-cd apps/rag-demo
-python3.14 -m venv .venv
-source .venv/bin/activate
+python3.14 -m venv apps/rag-demo/.venv
+source apps/rag-demo/.venv/bin/activate
 python -m pip install -U pip
-python -m pip install "namel3ss==0.1.0a20"
+python -m pip install "namel3ss==0.1.0a21"
 python -m pip install pytest
-python tools/ensure_provider_manifests.py
-python -m namel3ss app.ai check
-./run.sh
+python apps/rag-demo/tools/ensure_provider_manifests.py
+python -m namel3ss apps/rag-demo/app.ai check
+n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
 Open:
@@ -60,13 +59,13 @@ Notes:
 Production preview (default browser UX):
 
 ```bash
-./run.sh
+n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
 Studio instrumentation mode:
 
 ```bash
-n3 run studio app.ai --port 7360 --no-open
+n3 run studio apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
 In Studio, the diagnostics slot shows:
@@ -80,6 +79,65 @@ In Studio, the diagnostics slot shows:
 Platform-level runtime limits and Namel3ss-only feasibility notes are tracked in:
 
 - `apps/rag-demo/LIMITATIONS_REPORT.md`
+
+## Troubleshooting (Deterministic)
+
+Use repo-root commands with explicit app path:
+
+```bash
+n3 check apps/rag-demo/app.ai
+n3 apps/rag-demo/app.ai ui > /tmp/rag-static-ui.json
+shasum -a 256 /tmp/rag-static-ui.json
+```
+
+Start runtime with explicit path:
+
+```bash
+n3 run apps/rag-demo/app.ai --port 7360 --no-open
+```
+
+1. Static-vs-runtime manifest drift
+- Capture runtime UI payload and compare with static output:
+```bash
+curl -sS http://127.0.0.1:7360/api/v1/ui > /tmp/rag-runtime-ui.json || \
+curl -sS http://127.0.0.1:7360/api/ui > /tmp/rag-runtime-ui.json
+shasum -a 256 /tmp/rag-runtime-ui.json
+diff -u /tmp/rag-static-ui.json /tmp/rag-runtime-ui.json
+```
+- If drift exists: stop runtime, ensure a single listener, rerun explicit-path launch.
+
+2. Renderer-registry diagnostics visibility
+- Probe both known endpoints:
+```bash
+curl -i http://127.0.0.1:7360/api/renderer-registry
+curl -i http://127.0.0.1:7360/api/renderer_registry
+```
+- `404` is a known platform limitation; record result in incident notes and continue with app-level checks.
+
+3. Multiple runtimes on same host/port
+- Detect listeners:
+```bash
+lsof -nP -iTCP:7360 -sTCP:LISTEN
+```
+- If more than one runtime is active, terminate extras and relaunch one explicit `n3 run apps/rag-demo/app.ai ...`.
+
+4. Multi-app path mis-targeting
+- Always include full target path in commands:
+```bash
+n3 check apps/rag-demo/app.ai
+n3 run apps/rag-demo/app.ai --port 7360 --no-open
+n3 apps/rag-demo/app.ai ui
+```
+
+5. Startup observability gaps
+- Capture startup identity and hash manually:
+```bash
+echo "app=apps/rag-demo/app.ai"
+n3 --version
+python -m namel3ss --version
+python -m pip show namel3ss | rg '^Version:'
+n3 apps/rag-demo/app.ai ui | shasum -a 256
+```
 
 ## What To Expect In UX
 

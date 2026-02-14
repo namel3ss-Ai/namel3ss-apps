@@ -14,7 +14,7 @@ Phase 1 upgrades the current deterministic RAG demo into a production-grade UX a
 - Diagnostics tables that are deterministic, sortable, and filterable.
 - A strict black/white theme token system with consistent spacing.
 - Modular source layout with clear ownership and <= 500 LOC per file.
-- Dependency target moved to `namel3ss==0.1.0a20`.
+- Dependency target moved to `namel3ss==0.1.0a21`.
 
 ## 2. Scope
 
@@ -37,18 +37,18 @@ Out of scope:
 Current baseline in repo before this spec:
 
 - `app.ai` monolith (~2200 LOC).
-- `namel3ss==0.1.0a20`.
+- `namel3ss==0.1.0a21`.
 
 Target baseline for Phase 1:
 
-- `namel3ss==0.1.0a20`.
-- Python runtime `>=3.14` (required by `namel3ss-0.1.0a20` wheel metadata).
+- `namel3ss==0.1.0a21`.
+- Python runtime `>=3.14` (required by `namel3ss-0.1.0a21` wheel metadata).
 - Local `n3` commands executed from project venv where possible.
 
 Dependency acceptance checks:
 
-1. `python -m namel3ss --version` returns `namel3ss 0.1.0a20`.
-2. `python -m namel3ss app.ai check` succeeds.
+1. `python -m namel3ss --version` returns `namel3ss 0.1.0a21`.
+2. `python -m namel3ss apps/rag-demo/app.ai check` succeeds.
 3. `./smoke.sh` succeeds in the same venv.
 
 ## 4. Determinism Contracts
@@ -325,7 +325,7 @@ Implementation note:
 10. Studio-only context/prompt visibility is implemented.
 11. Theme and spacing tokens above are applied consistently.
 12. Manifest source is modularized into the five target files with <=500 LOC each.
-13. Project dependency target is `namel3ss==0.1.0a20` and runtime checks pass in a Python 3.14 environment.
+13. Project dependency target is `namel3ss==0.1.0a21` and runtime checks pass in a Python 3.14 environment.
 
 ## 9. Test Strategy
 
@@ -340,7 +340,7 @@ Required automated checks:
 
 Required smoke checks:
 
-- `app.ai check`
+- `apps/rag-demo/app.ai check`
 - core action invocation path for no-selection and indexed-selection scenarios
 - repeated run equality assertions for diagnostics ordering
 
@@ -348,7 +348,7 @@ Required smoke checks:
 
 Phase 1 rollout sequence:
 
-1. Land dependency/runtime baseline (`0.1.0a20`, Python 3.14).
+1. Land dependency/runtime baseline (`0.1.0a21`, Python 3.14).
 2. Land data model and ingestion state machine.
 3. Land retrieval tuning + tag filtering + trust rubric.
 4. Land citation inline UX and diagnostics controls.
