@@ -7,20 +7,12 @@ capabilities:
   ui_navigation
 
 ui:
-  theme is "modern"
-  accent color is "cyan"
+  theme is "minimal"
+  accent color is "blue"
   density is "comfortable"
   motion is "subtle"
   shape is "rounded"
   surface is "flat"
-  primary color is "#95A3C6"
-  secondary color is "#6E7997"
-  background color is "#2D3041"
-  foreground color is "#E8EAF2"
-  font family is "SF Pro Display"
-  spacing scale is 1.0
-  border radius is 10
-  shadow level is 1
 
 policy
   allow ingestion.run
@@ -109,12 +101,15 @@ nav_sidebar:
 page "Chat":
   layout:
     header:
-      title is "Namel3ss RAG"
-      text is "Select a model and ask grounded questions with source-backed answers."
+      title is "RAG Chat"
+      text is "Ask a question. Answers are grounded with citations."
       row:
         column:
           section "Model":
             text is "rag_engine default retrieval profile"
+        column:
+          section "Trust":
+            trust_indicator from is state.answer.trusted
         column:
           section "Status":
             list is rag_engine.Notice:
@@ -122,32 +117,8 @@ page "Chat":
               item:
                 primary is message
               empty_state: hidden
-        column:
-          section "Trust":
-            trust_indicator from is state.answer.trusted
 
     main:
-      section "Run Identity":
-        text is "Repo-root check: n3 check apps/rag-demo/app.ai"
-        text is "Repo-root run: n3 run apps/rag-demo/app.ai --port 7360 --no-open"
-        text is "Startup banner: n3 run apps/rag-demo/app.ai --port 7361 --no-open --dry"
-
-      section "How can I help you today?":
-        row:
-          column:
-            section "Tell me what this file is about":
-              text is "Summarize only from indexed evidence and show citations."
-          column:
-            section "Show me strongest evidence":
-              text is "Prioritize chunks with highest grounding confidence."
-        row:
-          column:
-            section "Compare two concepts":
-              text is "Explain differences and cite each claim."
-          column:
-            section "Extract policies and rules":
-              text is "Return constraints with source snippets."
-
       section "Conversation":
         chat:
           style is "bubbles"
@@ -157,7 +128,6 @@ page "Chat":
           attachments are true
           streaming is false
           messages from is state.chat.messages
-          thinking when is state.loading
           composer calls flow "rag_engine.ask_question"
 
       row:
@@ -166,13 +136,13 @@ page "Chat":
             variant is "secondary"
             calls flow "rag_engine.reset_chat"
         column:
-          button "Reset source drawer":
+          button "Reset sources":
             variant is "secondary"
             calls flow "rag_engine.clear_sources_drawer"
 
     drawer_right:
       section "Sources":
-        text is "Open and inspect source snippets selected for the current answer."
+        text is "Click a citation to open source preview."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
