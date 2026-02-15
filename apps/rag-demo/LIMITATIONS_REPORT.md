@@ -1,98 +1,171 @@
 # RAG Demo Limitations Reports
 
 - Runtime target: `namel3ss==0.1.0a21`
-- Verification date: `2026-02-14`
-- Current reproducible blockers: none
+- Last verified: `2026-02-15`
+- Current reproducible blockers: `1`
+
+## Renderer registry export contract mismatch (`N3E_RENDERER_REGISTRY_INVALID`)
+- Title: Renderer registry export contract mismatch (`N3E_RENDERER_REGISTRY_INVALID`)
+- Date: 2026-02-15
+- Limitation/Issue:
+  - Runtime UI fails with `N3E_RENDERER_REGISTRY_INVALID` even when `/api/renderer-registry/health` reports validated parity.
+- Reproduction steps:
+  1. `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
+  2. `curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .`
+  3. `curl -sS -o /tmp/renderer_registry_get.js -w '%{http_code}\n' http://127.0.0.1:7360/renderer_registry.js`
+  4. `'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless=new --disable-gpu --virtual-time-budget=5000 --dump-dom http://127.0.0.1:7360 > /tmp/rag-dom.html`
+  5. `rg "N3E_RENDERER_REGISTRY_INVALID|renderer registry failed to load" /tmp/rag-dom.html`
+  6. `curl -sS http://127.0.0.1:7360/renderer_registry.js > /tmp/renderer_registry.js`
+  7. `curl -sS http://127.0.0.1:7360/ui_renderer_chat.js > /tmp/ui_renderer_chat.js`
+  8. `curl -sS http://127.0.0.1:7360/ui_renderer_rag.js > /tmp/ui_renderer_rag.js`
+  9. `sed -n '32,46p' /tmp/renderer_registry.js`
+  10. `rg -n "function renderCitationChipsElement|function renderTrustIndicatorElement|root\\.renderCitationChipsElement|root\\.renderTrustIndicatorElement" /tmp/ui_renderer_chat.js /tmp/ui_renderer_rag.js`
+- Expected:
+  - `health.ok=true`, `registry.status=validated`, and `parity.ok=true` should result in successful UI bootstrap.
+- Actual:
+  - Startup banner includes `renderer_registry_status":"validated"`.
+  - Health JSON includes `"ok": true`, `"registry": {"status": "validated"}`, `"parity": {"ok": true}`.
+  - `renderer_registry.js` GET returns `200`.
+  - Headless browser DOM contains: `N3E_RENDERER_REGISTRY_INVALID: renderer registry failed to load.`
+  - `renderer_registry.js` declares `chat` exports `renderCitationChipsElement` and `renderTrustIndicatorElement`.
+  - `ui_renderer_chat.js` only references those symbols.
+  - `ui_renderer_rag.js` defines and assigns those symbols.
+- Impact on rag-demo:
+  - App is not usable in runtime browser UX because rendering aborts before app manifest content is shown.
+- DSL-solvable?: no
+- If `no`: required platform/runtime change:
+  - Fix renderer export ownership/validation contract in runtime assets (`renderer_registry.js` and renderer bootstrap contract/order) so declared exports map to the entrypoint that defines them.
+- App-side mitigation implemented:
+  - Added deterministic troubleshooting flow in `README.md` with health + asset contract checks.
+  - Limited app-side action to diagnostics only; no `.ai` workaround exists for this runtime bootstrap failure.
+- Status: blocked
 
 ## Startup manifest parity gate
+- Title: Startup manifest parity gate
 - Date: 2026-02-14
-- Status: resolved
-- Repro:
-  1. Start runtime: `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
-  2. Check parity payload: `curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .`
+- Limitation/Issue:
+  - Historical manifest drift confusion between static and runtime payloads.
+- Reproduction steps:
+  1. `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
+  2. `curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq '.parity'`
 - Expected:
-  - Runtime exposes a first-class parity signal for renderer manifest vs registry wiring.
+  - Runtime exposes parity result with manifest hashes.
 - Actual:
-  - Endpoint returned `"ok": true`.
-  - Payload included `"parity": {"ok": true, "manifest_hash": "0a319f93b39ba8da937f385da754c10b71f4ce89bd21a16040c64180884b9c20", "registry_manifest_hash": "0a319f93b39ba8da937f385da754c10b71f4ce89bd21a16040c64180884b9c20", "renderer_count": 19}`.
-- App-side fix:
-  - Troubleshooting flow now starts with parity/health validation, not static-vs-runtime manifest diffing.
-- Platform dependency (if any):
-  - none
+  - Parity returns `ok=true` with matching `manifest_hash` and `registry_manifest_hash`.
+- Impact on rag-demo:
+  - Drift triage is now deterministic and quick.
+- DSL-solvable?: yes
+- If `no`: required platform/runtime change:
+  - n/a
+- App-side mitigation implemented:
+  - README now prioritizes startup parity checks over legacy static-vs-envelope comparisons.
+- Status: resolved
 
-## Renderer health endpoint (`/api/renderer-registry/health`)
+## Renderer health endpoint visibility
+- Title: Renderer health endpoint visibility
 - Date: 2026-02-14
-- Status: resolved
-- Repro:
-  1. Start runtime: `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
-  2. Call health endpoint: `curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .`
+- Limitation/Issue:
+  - Older docs used stale renderer endpoints and inconsistent probes.
+- Reproduction steps:
+  1. `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
+  2. `curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .`
 - Expected:
-  - Stable endpoint returns renderer registry validation state.
+  - Stable endpoint exposes registry status and parity state.
 - Actual:
-  - Payload returned `"schema_version": "renderer_registry_health@1"`.
-  - Payload returned `"registry": {"ok": true, "status": "validated", "renderer_count": 19}`.
-- App-side fix:
-  - README and in-app run-target guidance now use this endpoint as the canonical renderer diagnostic.
-- Platform dependency (if any):
-  - none
+  - Endpoint returns `schema_version=renderer_registry_health@1` and `registry.status=validated`.
+- Impact on rag-demo:
+  - Renderer diagnostics are now explicit and deterministic.
+- DSL-solvable?: yes
+- If `no`: required platform/runtime change:
+  - n/a
+- App-side mitigation implemented:
+  - README and runbook now use only `/api/renderer-registry/health`.
+- Status: resolved
 
 ## Host/port lock collision handling
+- Title: Host/port lock collision handling
 - Date: 2026-02-14
-- Status: resolved
-- Repro:
-  1. Start runtime: `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
-  2. Verify listener: `lsof -nP -iTCP:7360 -sTCP:LISTEN`
-  3. Attempt second runtime on same port: `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
+- Limitation/Issue:
+  - Parallel runs on same host/port previously caused confusing startup behavior.
+- Reproduction steps:
+  1. `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
+  2. `lsof -nP -iTCP:7360 -sTCP:LISTEN`
+  3. Start a second run on same port.
 - Expected:
-  - Second launch fails deterministically with lock-owner diagnostics.
+  - Second launch fails with lock-owner diagnostics.
 - Actual:
-  - Listener check output: `Python ... TCP 127.0.0.1:7360 (LISTEN)`.
-  - Second launch output:
-    - `What happened: Runtime already running on local:7360.`
-    - `Why: Active lock owner pid=71290 command='apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open'.`
-    - `Fix: Stop the running process or choose another port.`
-- App-side fix:
-  - README troubleshooting keeps `lsof` pre-check and explicit-path relaunch guidance.
-- Platform dependency (if any):
-  - none
+  - Runtime emits lock-owner details and guidance to stop existing process or change port.
+- Impact on rag-demo:
+  - Reduces false debugging of app logic when runtime is simply already bound.
+- DSL-solvable?: yes
+- If `no`: required platform/runtime change:
+  - n/a
+- App-side mitigation implemented:
+  - README includes listener check and deterministic relaunch flow.
+- Status: resolved
 
-## Multi-app targeting warnings and explicit-path workflow
+## Multi-app path mis-targeting
+- Title: Multi-app path mis-targeting
 - Date: 2026-02-14
-- Status: resolved
-- Repro:
-  1. Run an ambiguous/non-explicit command from repo root: `apps/rag-demo/.venv/bin/n3 check app.ai`
-  2. Run explicit target command: `apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai`
+- Limitation/Issue:
+  - Ambiguous commands from repo root can target the wrong app path.
+- Reproduction steps:
+  1. `apps/rag-demo/.venv/bin/n3 check app.ai`
+  2. `apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai`
 - Expected:
-  - Non-explicit command should fail with correction guidance.
-  - Explicit app path should pass.
+  - Ambiguous target fails; explicit target passes.
 - Actual:
-  - Non-explicit command output:
-    - `Parse: FAIL`
-    - `What happened: App file not found: /Users/disanssebowabasalidde/Documents/GitHub/namel3ss-apps/app.ai`
-    - `Fix: Check the path or run commands from the project directory.`
-  - Explicit command output:
-    - `Parse: OK`
-    - `Lint: OK`
-    - `Manifest: OK`
-    - `Actions: 49 discovered`
-- App-side fix:
-  - `app.ai` contains explicit run-target instructions.
-  - README uses explicit `apps/rag-demo/app.ai` in all run/check commands.
-- Platform dependency (if any):
-  - none
+  - `check app.ai` fails with `App file not found`.
+  - Explicit path check passes (`Parse/Lint/Manifest: OK`).
+- Impact on rag-demo:
+  - Prevents accidental execution against wrong app context.
+- DSL-solvable?: yes
+- If `no`: required platform/runtime change:
+  - n/a
+- App-side mitigation implemented:
+  - Explicit app path commands in README and in-app run-target copy.
+- Status: resolved
 
-## Startup banner fields (app path/hash/renderer/lock)
+## Startup observability fields
+- Title: Startup observability fields
 - Date: 2026-02-14
-- Status: resolved
-- Repro:
-  1. `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7361 --no-open --dry 2>&1 | tee /tmp/rag-start.log`
-  2. `rg "Runtime startup|manifest_hash|renderer_registry_status|lock_path|lock_pid" /tmp/rag-start.log`
+- Limitation/Issue:
+  - Startup identity fields were previously missing from normal triage workflows.
+- Reproduction steps:
+  1. `apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open`
+  2. Read startup banner line.
 - Expected:
-  - Startup banner includes app identity and diagnostic fields for fast triage.
+  - Startup line includes `app_path`, `manifest_hash`, `renderer_registry_status`, `lock_path`, `lock_pid`.
 - Actual:
-  - Startup line:
-    - `Runtime startup {"app_path":"/Users/disanssebowabasalidde/Documents/GitHub/namel3ss-apps/apps/rag-demo/app.ai","bind_host":"127.0.0.1","bind_port":7361,"headless":false,"lock_path":"/var/folders/z_/8w_d_2vj7zq09fwlvhd8js_80000gn/T/namel3ss_runtime_locks/runtime_port_local_7361.lock.json","lock_pid":71248,"manifest_hash":"92fe0b6c4967c11e698eb0d6f4b262a91179d004ed01d8b7c438282b76fa15a7","mode":"run","renderer_registry_hash":"0a319f93b39ba8da937f385da754c10b71f4ce89bd21a16040c64180884b9c20","renderer_registry_status":"validated"}`
-- App-side fix:
-  - README startup checks now use banner-field verification.
-- Platform dependency (if any):
-  - none
+  - Runtime startup line includes all expected fields.
+- Impact on rag-demo:
+  - Faster verification that correct app/runtime instance is running.
+- DSL-solvable?: yes
+- If `no`: required platform/runtime change:
+  - n/a
+- App-side mitigation implemented:
+  - README includes startup-banner verification command.
+- Status: resolved
+
+## CLI entrypoint drift (global vs venv)
+- Title: CLI entrypoint drift (global vs venv)
+- Date: 2026-02-15
+- Limitation/Issue:
+  - Global `n3` on PATH can point to a different runtime version than rag-demo venv.
+- Reproduction steps:
+  1. `which n3 && n3 --version`
+  2. `apps/rag-demo/.venv/bin/n3 --version`
+  3. `apps/rag-demo/.venv/bin/python -m namel3ss --version`
+- Expected:
+  - All commands resolve to `namel3ss==0.1.0a21`.
+- Actual:
+  - Global: `/Library/Frameworks/Python.framework/Versions/3.12/bin/n3` -> `namel3ss 0.1.0a15`.
+  - Venv CLI/module: `namel3ss 0.1.0a21`.
+- Impact on rag-demo:
+  - Can produce stale behavior and incorrect blocker attribution.
+- DSL-solvable?: yes
+- If `no`: required platform/runtime change:
+  - n/a
+- App-side mitigation implemented:
+  - Operational commands pinned to `apps/rag-demo/.venv/bin/n3`.
+- Status: resolved
