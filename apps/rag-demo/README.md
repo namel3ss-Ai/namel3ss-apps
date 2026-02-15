@@ -17,10 +17,9 @@ Premium deterministic RAG demo built in Namel3ss with:
 python3.14 -m venv apps/rag-demo/.venv
 source apps/rag-demo/.venv/bin/activate
 python -m pip install -U pip
-python -m pip install "namel3ss==0.1.0a21"
-python -m pip install pytest
+python -m pip install -U "namel3ss==0.1.0a21" pytest
 python apps/rag-demo/tools/ensure_provider_manifests.py
-python -m namel3ss apps/rag-demo/app.ai check
+python -m namel3ss check apps/rag-demo/app.ai
 n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
@@ -82,62 +81,53 @@ Platform-level runtime limits and Namel3ss-only feasibility notes are tracked in
 
 ## Troubleshooting (Deterministic)
 
-Use repo-root commands with explicit app path:
+Run from repo root and always include `apps/rag-demo/app.ai` in `n3` commands.
+
+1. Preflight (required runtime + explicit app path)
 
 ```bash
-n3 check apps/rag-demo/app.ai
-n3 apps/rag-demo/app.ai ui > /tmp/rag-static-ui.json
-shasum -a 256 /tmp/rag-static-ui.json
+apps/rag-demo/.venv/bin/python -m pip install -U "namel3ss==0.1.0a21"
+apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
+apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
-Start runtime with explicit path:
+2. Startup parity + banner fields
+- Use one-shot startup verification:
 
 ```bash
-n3 run apps/rag-demo/app.ai --port 7360 --no-open
+apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7361 --no-open --dry 2>&1 | tee /tmp/rag-start.log
+rg "Runtime startup|manifest_hash|renderer_registry_status|lock_path|lock_pid" /tmp/rag-start.log
 ```
+- Expected: a `Runtime startup` line containing `app_path`, `manifest_hash`, `renderer_registry_status`, `lock_path`, and `lock_pid`.
 
-1. Static-vs-runtime manifest drift
-- Capture runtime UI payload and compare with static output:
+3. Renderer registry health
+- Check the runtime endpoint directly:
+
 ```bash
-curl -sS http://127.0.0.1:7360/api/v1/ui > /tmp/rag-runtime-ui.json || \
-curl -sS http://127.0.0.1:7360/api/ui > /tmp/rag-runtime-ui.json
-shasum -a 256 /tmp/rag-runtime-ui.json
-diff -u /tmp/rag-static-ui.json /tmp/rag-runtime-ui.json
+curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .
 ```
-- If drift exists: stop runtime, ensure a single listener, rerun explicit-path launch.
+- Expected: `"ok": true`, `"parity": {"ok": true}`, and `"registry": {"status": "validated"}`.
 
-2. Renderer-registry diagnostics visibility
-- Probe both known endpoints:
-```bash
-curl -i http://127.0.0.1:7360/api/renderer-registry
-curl -i http://127.0.0.1:7360/api/renderer_registry
-```
-- `404` is a known platform limitation; record result in incident notes and continue with app-level checks.
+4. Port conflict and lock handling
+- Check listener ownership:
 
-3. Multiple runtimes on same host/port
-- Detect listeners:
 ```bash
 lsof -nP -iTCP:7360 -sTCP:LISTEN
 ```
-- If more than one runtime is active, terminate extras and relaunch one explicit `n3 run apps/rag-demo/app.ai ...`.
+- If a stale run exists, a second launch on the same port now fails with lock-owner details:
 
-4. Multi-app path mis-targeting
-- Always include full target path in commands:
 ```bash
-n3 check apps/rag-demo/app.ai
-n3 run apps/rag-demo/app.ai --port 7360 --no-open
-n3 apps/rag-demo/app.ai ui
+apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
-5. Startup observability gaps
-- Capture startup identity and hash manually:
+5. Multi-app path mis-targeting
+- Confirm guardrails, then use explicit target:
+
 ```bash
-echo "app=apps/rag-demo/app.ai"
-n3 --version
-python -m namel3ss --version
-python -m pip show namel3ss | rg '^Version:'
-n3 apps/rag-demo/app.ai ui | shasum -a 256
+apps/rag-demo/.venv/bin/n3 check app.ai
+apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
 ```
+- The first command should fail from repo root (`App file not found`), while the explicit path command should pass.
 
 ## What To Expect In UX
 
@@ -168,8 +158,9 @@ n3 apps/rag-demo/app.ai ui | shasum -a 256
 Run full local validation:
 
 ```bash
-python3 -m compileall . -q
-python3 -m pytest -q
+cd apps/rag-demo
+.venv/bin/python -m compileall . -q
+.venv/bin/python -m pytest -q
 ./smoke.sh
 ```
 
