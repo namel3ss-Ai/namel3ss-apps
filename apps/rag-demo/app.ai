@@ -92,21 +92,34 @@ contract flow "rag_engine.ask_question":
     answer_text is text
     mode is text
 
-nav_sidebar:
-  item "New Chat" goes_to "Chat"
-  item "Documents" goes_to "Library"
-  item "Tuning" goes_to "Tuning"
-  item "Explain" goes_to "Explain"
-
 page "Chat":
   layout:
     header:
-      title is "RAG Chat"
-      text is "Ask a question. Answers are grounded with citations."
+      title is "RAG Assistant"
+      text is "Grounded answers with source citations."
+
+    main:
+      chat:
+        style is "bubbles"
+        show_avatars is false
+        group_messages is true
+        actions are ["view_sources"]
+        attachments are true
+        streaming is false
+        messages from is state.chat.messages
+        composer calls flow "rag_engine.ask_question"
+
       row:
         column:
-          section "Model":
-            text is "rag_engine default retrieval profile"
+          button "Reset Chat":
+            variant is "secondary"
+            calls flow "rag_engine.reset_chat"
+        column:
+          button "Reset Sources":
+            variant is "secondary"
+            calls flow "rag_engine.clear_sources_drawer"
+
+      row:
         column:
           section "Trust":
             trust_indicator from is state.answer.trusted
@@ -118,31 +131,9 @@ page "Chat":
                 primary is message
               empty_state: hidden
 
-    main:
-      section "Conversation":
-        chat:
-          style is "bubbles"
-          show_avatars is false
-          group_messages is true
-          actions are ["view_sources"]
-          attachments are true
-          streaming is false
-          messages from is state.chat.messages
-          composer calls flow "rag_engine.ask_question"
-
-      row:
-        column:
-          button "Reset chat":
-            variant is "secondary"
-            calls flow "rag_engine.reset_chat"
-        column:
-          button "Reset sources":
-            variant is "secondary"
-            calls flow "rag_engine.clear_sources_drawer"
-
     drawer_right:
       section "Sources":
-        text is "Click a citation to open source preview."
+        text is "Open citations for the current answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
