@@ -105,7 +105,7 @@ page "Chat":
   layout:
     header:
       title is "Assistant"
-      text is "Ask questions about your uploaded documents."
+      text is "Ask about your documents."
 
     main:
       chat:
@@ -118,15 +118,9 @@ page "Chat":
         messages from is state.chat.messages
         composer calls flow "rag_engine.ask_question"
 
-      row:
-        column:
-          button "Reset Chat":
-            variant is "secondary"
-            calls flow "rag_engine.reset_chat"
-
     drawer_right:
       section "Sources":
-        text is "Selected citations for the latest answer."
+        text is "Citations from the latest answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
@@ -137,15 +131,6 @@ page "Chat":
             action "Open in source drawer":
               calls flow "rag_engine.open_citation"
           empty_state: hidden
-
-      row:
-        column:
-          button "Reset Sources":
-            variant is "secondary"
-            calls flow "rag_engine.clear_sources_drawer"
-        column:
-          section "Trust":
-            trust_indicator from is state.answer.trusted
 
 page "Library":
   layout:
