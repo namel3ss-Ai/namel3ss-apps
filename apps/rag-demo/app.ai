@@ -7,12 +7,21 @@ capabilities:
   ui_navigation
 
 ui:
-  theme is "minimal"
-  accent color is "blue"
+  preset is "clarity"
+  theme is "light"
+  accent color is "green"
   density is "comfortable"
-  motion is "subtle"
-  shape is "rounded"
+  motion is "none"
+  shape is "soft"
   surface is "flat"
+  primary color is "#10A37F"
+  secondary color is "#D1D5DB"
+  background color is "#F7F7F8"
+  foreground color is "#1F2937"
+  font family is "Inter, system-ui"
+  spacing scale is 1.0
+  border radius is 12
+  shadow level is 0
 
 policy
   allow ingestion.run
@@ -95,16 +104,16 @@ contract flow "rag_engine.ask_question":
 page "Chat":
   layout:
     header:
-      title is "RAG Assistant"
-      text is "Grounded answers with source citations."
+      title is "Assistant"
+      text is "Ask questions about your uploaded documents."
 
     main:
       chat:
-        style is "bubbles"
+        style is "plain"
         show_avatars is false
         group_messages is true
         actions are ["view_sources"]
-        attachments are true
+        attachments are false
         streaming is false
         messages from is state.chat.messages
         composer calls flow "rag_engine.ask_question"
@@ -114,26 +123,10 @@ page "Chat":
           button "Reset Chat":
             variant is "secondary"
             calls flow "rag_engine.reset_chat"
-        column:
-          button "Reset Sources":
-            variant is "secondary"
-            calls flow "rag_engine.clear_sources_drawer"
-
-      row:
-        column:
-          section "Trust":
-            trust_indicator from is state.answer.trusted
-        column:
-          section "Status":
-            list is rag_engine.Notice:
-              variant is "single_line"
-              item:
-                primary is message
-              empty_state: hidden
 
     drawer_right:
       section "Sources":
-        text is "Open citations for the current answer."
+        text is "Selected citations for the latest answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
@@ -144,6 +137,15 @@ page "Chat":
             action "Open in source drawer":
               calls flow "rag_engine.open_citation"
           empty_state: hidden
+
+      row:
+        column:
+          button "Reset Sources":
+            variant is "secondary"
+            calls flow "rag_engine.clear_sources_drawer"
+        column:
+          section "Trust":
+            trust_indicator from is state.answer.trusted
 
 page "Library":
   layout:
