@@ -216,11 +216,11 @@ page "Library":
 
         row:
           column:
-            button "Refresh uploads":
+            button "View Uploads":
               variant is "secondary"
               calls flow "rag_engine.sync_library"
           column:
-            button "Build index":
+            button "Create Index":
               variant is "primary"
               calls flow "rag_engine.ingest_selected"
 
@@ -253,17 +253,17 @@ page "Library":
 
         row:
           column:
-            button "Select all sources":
+            button "View All Sources":
               variant is "secondary"
               calls flow "rag_engine.bulk_select_all"
           column:
-            button "Clear selected sources":
+            button "Reset Selected Sources":
               variant is "secondary"
               calls flow "rag_engine.bulk_clear_selection"
 
         row:
           column:
-            button "Re-index selected sources":
+            button "Create Reindex Queue":
               variant is "secondary"
               calls flow "rag_engine.bulk_reindex_selected"
           column:
@@ -273,11 +273,11 @@ page "Library":
 
         row:
           column:
-            button "Tag selected as Product":
+            button "Create Product Tags":
               variant is "secondary"
               calls flow "rag_engine.bulk_tag_selected_product"
           column:
-            button "Tag selected as Policy":
+            button "Create Policy Tags":
               variant is "secondary"
               calls flow "rag_engine.bulk_tag_selected_policy"
 
@@ -332,43 +332,43 @@ page "Tuning":
 
         row:
           column:
-            button "Set semantic_k to 4":
+            button "Reset Semantic K to 4":
               variant is "secondary"
               calls flow "rag_engine.set_semantic_k_4"
           column:
-            button "Set semantic_k to 8":
+            button "Reset Semantic K to 8":
               variant is "secondary"
               calls flow "rag_engine.set_semantic_k_8"
           column:
-            button "Set semantic_k to 12":
+            button "Reset Semantic K to 12":
               variant is "secondary"
               calls flow "rag_engine.set_semantic_k_12"
 
         row:
           column:
-            button "Set lexical_k to 4":
+            button "Reset Lexical K to 4":
               variant is "secondary"
               calls flow "rag_engine.set_lexical_k_4"
           column:
-            button "Set lexical_k to 8":
+            button "Reset Lexical K to 8":
               variant is "secondary"
               calls flow "rag_engine.set_lexical_k_8"
           column:
-            button "Set lexical_k to 12":
+            button "Reset Lexical K to 12":
               variant is "secondary"
               calls flow "rag_engine.set_lexical_k_12"
 
         row:
           column:
-            button "Set final_top_k to 3":
+            button "Reset Final Top K to 3":
               variant is "secondary"
               calls flow "rag_engine.set_final_top_k_3"
           column:
-            button "Set final_top_k to 5":
+            button "Reset Final Top K to 5":
               variant is "secondary"
               calls flow "rag_engine.set_final_top_k_5"
           column:
-            button "Set final_top_k to 8":
+            button "Reset Final Top K to 8":
               variant is "secondary"
               calls flow "rag_engine.set_final_top_k_8"
 
@@ -442,7 +442,7 @@ page "Explain":
 
         row:
           column:
-            button "Refresh diagnostics":
+            button "View Diagnostics":
               variant is "secondary"
               calls flow "rag_engine.refresh_diagnostics_view"
 

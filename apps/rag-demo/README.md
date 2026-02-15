@@ -1,4 +1,4 @@
-# RAG Demo (Namel3ss 0.1.0a21)
+# RAG Demo (Namel3ss 0.1.0a22)
 
 Premium deterministic RAG demo built in Namel3ss with:
 
@@ -9,7 +9,7 @@ Premium deterministic RAG demo built in Namel3ss with:
 
 ## Dependency Pin
 
-- `namel3ss==0.1.0a21` (see `pyproject.toml`)
+- `namel3ss==0.1.0a22` (see `pyproject.toml`)
 
 ## Quickstart
 
@@ -17,7 +17,7 @@ Premium deterministic RAG demo built in Namel3ss with:
 python3.14 -m venv apps/rag-demo/.venv
 source apps/rag-demo/.venv/bin/activate
 python -m pip install -U pip
-python -m pip install -U "namel3ss==0.1.0a21" pytest
+python -m pip install -U "namel3ss==0.1.0a22" pytest
 python apps/rag-demo/tools/ensure_provider_manifests.py
 python -m namel3ss check apps/rag-demo/app.ai
 apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
@@ -80,67 +80,43 @@ Platform-level runtime limits and Namel3ss-only feasibility notes are tracked in
 
 - `apps/rag-demo/LIMITATIONS_REPORT.md`
 
-## Troubleshooting (Deterministic)
+## Troubleshooting (Current Runtime)
 
-Run from repo root and always include `apps/rag-demo/app.ai` in `n3` commands.
-
-1. Preflight (required runtime + explicit app path)
+Use explicit app path in every command:
 
 ```bash
-apps/rag-demo/.venv/bin/python -m pip install -U "namel3ss==0.1.0a21"
-apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
-apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open
+n3 check apps/rag-demo/app.ai
+n3 run apps/rag-demo/app.ai --port 7360 --no-open
+n3 apps/rag-demo/app.ai ui > /tmp/rag-static-ui.json
 ```
 
-2. Manifest scope comparison (optional)
-- Do not compare static `n3 ... ui` output directly with `/api/v1/ui` (runtime envelope contract).
-- If needed, compare static manifest scope with runtime `/api/ui` manifest payload:
-
-```bash
-apps/rag-demo/.venv/bin/n3 apps/rag-demo/app.ai ui > /tmp/rag-static-ui.json
-curl -sS http://127.0.0.1:7360/api/ui > /tmp/rag-runtime-ui.json
-jq -c '.manifest' /tmp/rag-runtime-ui.json > /tmp/rag-runtime-manifest.json
-diff -u /tmp/rag-static-ui.json /tmp/rag-runtime-manifest.json || true
-```
-- Prefer startup parity gate + startup banner hash checks for deterministic triage.
-
-3. Startup parity + banner fields
-- Use one-shot startup verification:
-
-```bash
-apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7361 --no-open --dry 2>&1 | tee /tmp/rag-start.log
-rg "Runtime startup|manifest_hash|renderer_registry_status|lock_path|lock_pid" /tmp/rag-start.log
-```
-- Expected: a `Runtime startup` line containing `app_path`, `manifest_hash`, `renderer_registry_status`, `lock_path`, and `lock_pid`.
-
-4. Renderer registry health
-- Check the runtime endpoint directly:
+Renderer registry health (correct endpoint):
 
 ```bash
 curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .
 ```
-- Expected: `"ok": true`, `"parity": {"ok": true}`, and `"registry": {"status": "validated"}`.
 
-5. Port conflict and lock handling
-- Check listener ownership:
+Do not use `/api/renderer-registry` or `/api/renderer_registry` for health checks.
+
+Startup banner fields check:
+
+```bash
+n3 run apps/rag-demo/app.ai --port 7360 --no-open 2>&1 | tee /tmp/rag-start.log
+rg "Runtime startup|manifest_hash|renderer_registry_status|lock_path|lock_pid" /tmp/rag-start.log
+```
+
+Port conflict check:
 
 ```bash
 lsof -nP -iTCP:7360 -sTCP:LISTEN
 ```
-- If a stale run exists, a second launch on the same port now fails with lock-owner details:
+
+If browser shows `N3E_RENDERER_REGISTRY_INVALID`, run:
 
 ```bash
-apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open
+n3 doctor --json --app apps/rag-demo/app.ai | jq '.checks[] | select(.id=="cli_entrypoint" or .id=="import_path" or .id=="python_version" or .id=="contract_renderer_registry")'
+curl -I http://127.0.0.1:7360/renderer_registry.js
 ```
-
-6. Multi-app path mis-targeting
-- Confirm guardrails, then use explicit target:
-
-```bash
-apps/rag-demo/.venv/bin/n3 check app.ai
-apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
-```
-- The first command should fail from repo root (`App file not found`), while the explicit path command should pass.
 
 ## What To Expect In UX
 
@@ -171,7 +147,7 @@ apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
 Run full local validation (no shell wrappers):
 
 ```bash
-python -m pip install -U "namel3ss==0.1.0a21"
+python -m pip install -U "namel3ss==0.1.0a22"
 python -m pip install pytest
 python apps/rag-demo/tools/ensure_provider_manifests.py
 n3 check apps/rag-demo/app.ai

@@ -11,7 +11,7 @@ This is primarily a runtime consistency problem, not a parser/lint issue in `.ai
 
 ## Environment
 - Incident runtime: `namel3ss 0.1.0a19`
-- Current target runtime: `namel3ss 0.1.0a21`
+- Current target runtime: `namel3ss 0.1.0a22`
 - Host: Windows 11
 - App paths involved:
   - `apps/rag-demo/app.ai`
@@ -40,7 +40,7 @@ This is primarily a runtime consistency problem, not a parser/lint issue in `.ai
 1. Added deterministic RAG workspace package under:
    - `apps/rag-demo/examples/rag_workspace/modules/rag/*.ai`
    - `apps/rag-demo/examples/rag_workspace/app.ai`
-2. Upgraded dependency to `namel3ss==0.1.0a21` in `apps/rag-demo/pyproject.toml`.
+2. Upgraded dependency to `namel3ss==0.1.0a22` in `apps/rag-demo/pyproject.toml`.
 3. Reduced risky renderer usage and stabilized action wiring for citation open flow.
 4. Added deterministic citation id in record model (`id = citation_id`).
 5. Removed temporary non-`.ai` test scaffolding introduced during debugging.
