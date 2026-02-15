@@ -19,9 +19,6 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/rag-demo
 
     steps:
       - name: Checkout
@@ -38,18 +35,130 @@ jobs:
           python -m pip install namel3ss==0.1.0a21 pytest
 
       - name: Ensure provider pack manifests
-        run: python tools/ensure_provider_manifests.py
+        run: python apps/rag-demo/tools/ensure_provider_manifests.py
 
       - name: Validate app manifest
-        run: n3 check app.ai
+        run: n3 check apps/rag-demo/app.ai
 
-      - name: Run deterministic smoke test
-        run: ./smoke.sh
+      - name: Run deterministic snapshot regression (direct commands)
+        run: |
+          set -euo pipefail
+          export N3_IDENTITY_ID=rag-demo-tester
+
+          n3 apps/rag-demo/app.ai ui > /tmp/rag-manifest.json
+
+          composer_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.ask_question")) | .[0].key // empty' /tmp/rag-manifest.json)"
+          guided_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.run_demo_mode_path")) | .[0].key // empty' /tmp/rag-manifest.json)"
+          citation_open_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.open_citation" and (.key | contains("open_in_source_drawer")))) | if length > 0 then .[0].key else empty end' /tmp/rag-manifest.json)"
+          if [[ -z "$citation_open_action_id" ]]; then
+            citation_open_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.open_citation")) | .[0].key // empty' /tmp/rag-manifest.json)"
+          fi
+          if [[ -z "$composer_action_id" || -z "$guided_action_id" || -z "$citation_open_action_id" ]]; then
+            echo "Required action ids could not be resolved from manifest." >&2
+            exit 1
+          fi
+
+          jq '{
+            page_slug: .pages[0].slug,
+            layout_slots: (.pages[0].layout | keys | sort),
+            diagnostics_blocks: (.pages[0].diagnostics_blocks | length),
+            upload_request: .upload_requests[0],
+            theme_name: .theme.theme_name,
+            theme_css_hash: .theme.css_hash,
+            scope_selector: {
+              options_source: "state.tag.options",
+              active_source: "state.tag.active"
+            },
+            chats: (
+              [.. | objects | select(.type=="chat") | {
+                style,
+                show_avatars,
+                group_messages,
+                actions,
+                attachments,
+                streaming
+              }]
+              | sort_by(.streaming)
+            ),
+            composer_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.ask_question")) | .[0].value | {id, type, flow}),
+            run_guided_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.run_demo_mode_path")) | .[0].value | {id, type, flow}),
+            reset_chat_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.reset_chat")) | .[0].value | {id, type, flow}),
+            clear_drawer_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.clear_sources_drawer")) | .[0].value | {id, type, flow}),
+            upload_actions: {
+              select: (.actions | to_entries | map(select(.value.type=="upload_select")) | .[0].value.type // null),
+              clear: (.actions | to_entries | map(select(.value.type=="upload_clear")) | .[0].value.type // null),
+              ingestion: (.actions | to_entries | map(select(.value.type=="ingestion_review")) | .[0].value.type // null)
+            }
+          }' /tmp/rag-manifest.json > /tmp/rag-manifest-summary.json
+          diff -u apps/rag-demo/tests/snapshots/manifest_core.json /tmp/rag-manifest-summary.json
+
+          n3 apps/rag-demo/app.ai "$composer_action_id" --json '{"message":"what is this doc about"}' | jq '{
+            mode: .result.mode,
+            answer: .result.answer_text,
+            citations: .state.answer.citations,
+            trusted: .state.answer.trusted,
+            trust_score: .state.answer.trust_score,
+            source_count: .state.answer.source_count
+          }' > /tmp/rag-composer.json
+          diff -u apps/rag-demo/tests/snapshots/composer_no_selection.json /tmp/rag-composer.json
+
+          n3 apps/rag-demo/app.ai "$composer_action_id" --json '{"message":"what is this doc about"}' | jq '{
+            mode: .result.mode,
+            answer: .result.answer_text,
+            citations: .state.answer.citations,
+            trusted: .state.answer.trusted,
+            trust_score: .state.answer.trust_score,
+            source_count: .state.answer.source_count
+          }' > /tmp/rag-composer-second.json
+          diff -u /tmp/rag-composer.json /tmp/rag-composer-second.json
+
+          n3 apps/rag-demo/app.ai "$guided_action_id" --json '{}' | jq '{
+            status: .result.status,
+            mode: .result.mode,
+            answer: .result.answer_text,
+            citation_count: (.state.answer.citations | length),
+            trusted: .state.answer.trusted,
+            trust_score: .state.answer.trust_score,
+            source_count: .state.answer.source_count,
+            selected_source: .state.selected_citation_source,
+            ready_documents: .state.ready_documents,
+            total_documents: .state.total_documents,
+            chunk_count: .state.chunk_count,
+            tag_product_count: .state.tag_product_count
+          }' > /tmp/rag-guided.json
+          diff -u apps/rag-demo/tests/snapshots/guided_flow.json /tmp/rag-guided.json
+
+          n3 apps/rag-demo/app.ai "$guided_action_id" --json '{}' | jq '{
+            status: .result.status,
+            mode: .result.mode,
+            answer: .result.answer_text,
+            citation_count: (.state.answer.citations | length),
+            trusted: .state.answer.trusted,
+            trust_score: .state.answer.trust_score,
+            source_count: .state.answer.source_count,
+            selected_source: .state.selected_citation_source,
+            ready_documents: .state.ready_documents,
+            total_documents: .state.total_documents,
+            chunk_count: .state.chunk_count,
+            tag_product_count: .state.tag_product_count
+          }' > /tmp/rag-guided-second.json
+          diff -u /tmp/rag-guided.json /tmp/rag-guided-second.json
+
+          n3 apps/rag-demo/app.ai "$citation_open_action_id" --json '{"row":{"source_id":"guided-product","chunk_id":"guided-product-1","page_number":1}}' | jq '{
+            result: .result,
+            selected_source: .state.selected_citation_source,
+            drawer: .state.drawer.has_selection
+          }' > /tmp/rag-citation-open.json
+          diff -u apps/rag-demo/tests/snapshots/citation_open.json /tmp/rag-citation-open.json
+
+      - name: Run pytest regression suite
+        run: python -m pytest -q apps/rag-demo/tests
 
       - name: Reproduce locally (on failure)
         if: failure()
         run: |
           echo "Reproduce with:"
-          echo "  cd apps/rag-demo"
-          echo "  n3 check app.ai"
-          echo "  ./smoke.sh"
+          echo "  python apps/rag-demo/tools/ensure_provider_manifests.py"
+          echo "  n3 check apps/rag-demo/app.ai"
+          echo "  n3 apps/rag-demo/app.ai ui > /tmp/rag-manifest.json"
+          echo "  python -m pytest -q apps/rag-demo/tests"

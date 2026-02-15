@@ -20,6 +20,7 @@ python -m pip install -U pip
 python -m pip install -U "namel3ss==0.1.0a21" pytest
 python apps/rag-demo/tools/ensure_provider_manifests.py
 python -m namel3ss check apps/rag-demo/app.ai
+apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
 n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
@@ -91,7 +92,19 @@ apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
 apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
-2. Startup parity + banner fields
+2. Manifest scope comparison (optional)
+- Do not compare static `n3 ... ui` output directly with `/api/v1/ui` (runtime envelope contract).
+- If needed, compare static manifest scope with runtime `/api/ui` manifest payload:
+
+```bash
+apps/rag-demo/.venv/bin/n3 apps/rag-demo/app.ai ui > /tmp/rag-static-ui.json
+curl -sS http://127.0.0.1:7360/api/ui > /tmp/rag-runtime-ui.json
+jq -c '.manifest' /tmp/rag-runtime-ui.json > /tmp/rag-runtime-manifest.json
+diff -u /tmp/rag-static-ui.json /tmp/rag-runtime-manifest.json || true
+```
+- Prefer startup parity gate + startup banner hash checks for deterministic triage.
+
+3. Startup parity + banner fields
 - Use one-shot startup verification:
 
 ```bash
@@ -100,7 +113,7 @@ rg "Runtime startup|manifest_hash|renderer_registry_status|lock_path|lock_pid" /
 ```
 - Expected: a `Runtime startup` line containing `app_path`, `manifest_hash`, `renderer_registry_status`, `lock_path`, and `lock_pid`.
 
-3. Renderer registry health
+4. Renderer registry health
 - Check the runtime endpoint directly:
 
 ```bash
@@ -108,7 +121,7 @@ curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .
 ```
 - Expected: `"ok": true`, `"parity": {"ok": true}`, and `"registry": {"status": "validated"}`.
 
-4. Port conflict and lock handling
+5. Port conflict and lock handling
 - Check listener ownership:
 
 ```bash
@@ -120,7 +133,7 @@ lsof -nP -iTCP:7360 -sTCP:LISTEN
 apps/rag-demo/.venv/bin/n3 run apps/rag-demo/app.ai --port 7360 --no-open
 ```
 
-5. Multi-app path mis-targeting
+6. Multi-app path mis-targeting
 - Confirm guardrails, then use explicit target:
 
 ```bash
@@ -155,13 +168,96 @@ apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
 
 ## Tests
 
-Run full local validation:
+Run full local validation (no shell wrappers):
 
 ```bash
-cd apps/rag-demo
-.venv/bin/python -m compileall . -q
-.venv/bin/python -m pytest -q
-./smoke.sh
+python -m pip install -U "namel3ss==0.1.0a21"
+python -m pip install pytest
+python apps/rag-demo/tools/ensure_provider_manifests.py
+n3 check apps/rag-demo/app.ai
+n3 run apps/rag-demo/app.ai --port 7360 --no-open
+curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq .
+python -m pytest -q apps/rag-demo/tests
+```
+
+Deterministic snapshot regression commands (direct `n3` + `jq`):
+
+```bash
+n3 apps/rag-demo/app.ai ui > /tmp/rag-manifest.json
+
+composer_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.ask_question")) | .[0].key // empty' /tmp/rag-manifest.json)"
+guided_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.run_demo_mode_path")) | .[0].key // empty' /tmp/rag-manifest.json)"
+citation_open_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.open_citation" and (.key | contains("open_in_source_drawer")))) | if length > 0 then .[0].key else empty end' /tmp/rag-manifest.json)"
+if [ -z "$citation_open_action_id" ]; then
+  citation_open_action_id="$(jq -r '.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.open_citation")) | .[0].key // empty' /tmp/rag-manifest.json)"
+fi
+
+jq '{
+  page_slug: .pages[0].slug,
+  layout_slots: (.pages[0].layout | keys | sort),
+  diagnostics_blocks: (.pages[0].diagnostics_blocks | length),
+  upload_request: .upload_requests[0],
+  theme_name: .theme.theme_name,
+  theme_css_hash: .theme.css_hash,
+  scope_selector: {
+    options_source: "state.tag.options",
+    active_source: "state.tag.active"
+  },
+  chats: (
+    [.. | objects | select(.type=="chat") | {
+      style,
+      show_avatars,
+      group_messages,
+      actions,
+      attachments,
+      streaming
+    }]
+    | sort_by(.streaming)
+  ),
+  composer_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.ask_question")) | .[0].value | {id, type, flow}),
+  run_guided_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.run_demo_mode_path")) | .[0].value | {id, type, flow}),
+  reset_chat_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.reset_chat")) | .[0].value | {id, type, flow}),
+  clear_drawer_action: (.actions | to_entries | map(select(.value.type=="call_flow" and .value.flow=="rag_engine.clear_sources_drawer")) | .[0].value | {id, type, flow}),
+  upload_actions: {
+    select: (.actions | to_entries | map(select(.value.type=="upload_select")) | .[0].value.type // null),
+    clear: (.actions | to_entries | map(select(.value.type=="upload_clear")) | .[0].value.type // null),
+    ingestion: (.actions | to_entries | map(select(.value.type=="ingestion_review")) | .[0].value.type // null)
+  }
+}' /tmp/rag-manifest.json > /tmp/rag-manifest-summary.json
+diff -u apps/rag-demo/tests/snapshots/manifest_core.json /tmp/rag-manifest-summary.json
+
+n3 apps/rag-demo/app.ai "$composer_action_id" --json '{"message":"what is this doc about"}' | jq '{
+  mode: .result.mode,
+  answer: .result.answer_text,
+  citations: .state.answer.citations,
+  trusted: .state.answer.trusted,
+  trust_score: .state.answer.trust_score,
+  source_count: .state.answer.source_count
+}' > /tmp/rag-composer.json
+diff -u apps/rag-demo/tests/snapshots/composer_no_selection.json /tmp/rag-composer.json
+
+n3 apps/rag-demo/app.ai "$guided_action_id" --json '{}' | jq '{
+  status: .result.status,
+  mode: .result.mode,
+  answer: .result.answer_text,
+  citation_count: (.state.answer.citations | length),
+  trusted: .state.answer.trusted,
+  trust_score: .state.answer.trust_score,
+  source_count: .state.answer.source_count,
+  selected_source: .state.selected_citation_source,
+  ready_documents: .state.ready_documents,
+  total_documents: .state.total_documents,
+  chunk_count: .state.chunk_count,
+  tag_product_count: .state.tag_product_count
+}' > /tmp/rag-guided.json
+diff -u apps/rag-demo/tests/snapshots/guided_flow.json /tmp/rag-guided.json
+
+n3 apps/rag-demo/app.ai "$citation_open_action_id" --json '{"row":{"source_id":"guided-product","chunk_id":"guided-product-1","page_number":1}}' | jq '{
+  result: .result,
+  selected_source: .state.selected_citation_source,
+  drawer: .state.drawer.has_selection
+}' > /tmp/rag-citation-open.json
+diff -u apps/rag-demo/tests/snapshots/citation_open.json /tmp/rag-citation-open.json
 ```
 
 ## Headless API

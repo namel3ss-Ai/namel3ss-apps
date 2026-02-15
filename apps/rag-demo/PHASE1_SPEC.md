@@ -48,8 +48,8 @@ Target baseline for Phase 1:
 Dependency acceptance checks:
 
 1. `python -m namel3ss --version` returns `namel3ss 0.1.0a21`.
-2. `python -m namel3ss apps/rag-demo/app.ai check` succeeds.
-3. `./smoke.sh` succeeds in the same venv.
+2. `n3 check apps/rag-demo/app.ai` succeeds.
+3. `python -m pytest -q apps/rag-demo/tests` succeeds in the same venv.
 
 ## 4. Determinism Contracts
 
@@ -340,7 +340,7 @@ Required automated checks:
 
 Required smoke checks:
 
-- `apps/rag-demo/app.ai check`
+- `n3 check apps/rag-demo/app.ai`
 - core action invocation path for no-selection and indexed-selection scenarios
 - repeated run equality assertions for diagnostics ordering
 
