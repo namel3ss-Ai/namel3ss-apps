@@ -9,13 +9,74 @@ flow "ask_question": requires true
       lexical_k is 8
       final_top_k is 6
   set state.loading is true
+  set state.raw_message is ""
   set state.q is ""
+  set state.has_query_text_input is false
+  set state.scope_project_id is ""
+  set state.scope_project_label is ""
+  set state.scope_project_conflict is false
+  set state.scope_document_ids is list:
+  set state.scope_document_mode is "once"
   try:
     let message_query is input.message
     if message_query is not "":
-      set state.q is message_query
+      set state.raw_message is message_query
+  with catch err:
+    set state.raw_message is state.raw_message
+  try:
+    let scoped_query is input.query_text
+    set state.has_query_text_input is true
+    if scoped_query is not "":
+      set state.q is scoped_query
   with catch err:
     set state.q is state.q
+  try:
+    let scoped_project_id is input.project_scope
+    if scoped_project_id is not "":
+      set state.scope_project_id is scoped_project_id
+  with catch err:
+    set state.scope_project_id is state.scope_project_id
+  try:
+    let scoped_project_label is input.project_scope_label
+    if scoped_project_label is not "":
+      set state.scope_project_label is scoped_project_label
+  with catch err:
+    set state.scope_project_label is state.scope_project_label
+  try:
+    let scoped_project_conflict is input.project_scope_conflict
+    if scoped_project_conflict is true:
+      set state.scope_project_conflict is true
+  with catch err:
+    set state.scope_project_conflict is state.scope_project_conflict
+  try:
+    let scoped_documents is input.document_scope
+    for each scoped_document_id in scoped_documents:
+      if scoped_document_id is not "":
+        set state.scope_document_ids is list append state.scope_document_ids with scoped_document_id
+  with catch err:
+    set state.scope_document_ids is state.scope_document_ids
+  try:
+    let scoped_document_mode is input.document_scope_mode
+    if scoped_document_mode is "add":
+      set state.scope_document_mode is "add"
+    else:
+      if scoped_document_mode is "once":
+        set state.scope_document_mode is "once"
+  with catch err:
+    set state.scope_document_mode is state.scope_document_mode
+  set state.scope_document_ids_unique is list:
+  for each scoped_document_id in state.scope_document_ids:
+    set state.scope_document_seen is false
+    for each known_scoped_document_id in state.scope_document_ids_unique:
+      if known_scoped_document_id is scoped_document_id:
+        set state.scope_document_seen is true
+    if state.scope_document_seen is false:
+      set state.scope_document_ids_unique is list append state.scope_document_ids_unique with scoped_document_id
+  set state.scope_document_ids is state.scope_document_ids_unique
+  if state.q is "":
+    if state.has_query_text_input is false:
+      if state.raw_message is not "":
+        set state.q is state.raw_message
   try:
     let row_query is input.row.query
     if state.q is "":
@@ -33,13 +94,136 @@ flow "ask_question": requires true
     return map:
       "answer_text" is ""
       "mode" is "empty_query"
+  if state.scope_project_conflict is true:
+    set state.loading is false
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Multiple #project mentions found. Mention one project in a single prompt."
+    as notice_project_scope_conflict
+    return map:
+      "answer_text" is ""
+      "mode" is "project_scope_conflict"
   let sync_status is call flow "rag_engine.sync_library":
     input:
     output:
       status
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+  if state.scope_project_id is "":
+    set state.scope_project_id is state.active_project_id
+  find "Project" where id is state.scope_project_id
+  let scoped_project_count is list length of project_results
+  if scoped_project_count is 0:
+    set state.scope_project_id is state.active_project_id
+  find "Project" where id is state.scope_project_id
+  let active_scope_project_count is list length of project_results
+  if active_scope_project_count is greater than 0:
+    let active_scope_project is list get project_results at 0
+    if state.scope_project_label is "":
+      set state.scope_project_label is active_scope_project.name
   set state.needs_auto_ingest is false
-  find "DocumentLibrary" where selected is true
-  for each selected_doc in documentlibrary_results:
+  find "ProjectBinding" where project_id is state.scope_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
+  set state.selected_docs_for_query is list:
+  set state.scoped_docs_outside_project is list:
+  let scoped_document_count is list length of state.scope_document_ids
+  if scoped_document_count is greater than 0:
+    find "DocumentLibrary" where true
+    for each selected_doc in documentlibrary_results:
+      set state.in_scoped_documents is false
+      for each scoped_upload_id in state.scope_document_ids:
+        if scoped_upload_id is selected_doc.upload_id:
+          set state.in_scoped_documents is true
+      if state.in_scoped_documents is true:
+        set state.in_active_project is false
+        for each active_upload_id in state.active_project_upload_ids:
+          if active_upload_id is selected_doc.upload_id:
+            set state.in_active_project is true
+        if state.in_active_project is true:
+          set state.selected_docs_for_query is list append state.selected_docs_for_query with selected_doc
+        else:
+          set state.scoped_docs_outside_project is list append state.scoped_docs_outside_project with selected_doc
+
+    let outside_scope_count is list length of state.scoped_docs_outside_project
+    if outside_scope_count is greater than 0:
+      if state.scope_document_mode is "add":
+        for each outside_doc in state.scoped_docs_outside_project:
+          find "ProjectBinding" where id is state.scope_project_id + "::" + outside_doc.upload_id
+          let outside_binding_count is list length of projectbinding_results
+          if outside_binding_count is 0:
+            create "ProjectBinding" with map:
+              "id" is state.scope_project_id + "::" + outside_doc.upload_id
+              "project_id" is state.scope_project_id
+              "upload_id" is outside_doc.upload_id
+            as outside_scope_binding
+          set state.selected_docs_for_query is list append state.selected_docs_for_query with outside_doc
+          set state.active_project_upload_ids is list append state.active_project_upload_ids with outside_doc.upload_id
+
+        delete "Notice" where true
+        create "Notice" with map:
+          "id" is "current"
+          "message" is "Added @document sources to #" + state.scope_project_label + " for future chats."
+        as notice_scope_docs_added
+      else:
+        for each outside_doc in state.scoped_docs_outside_project:
+          set state.selected_docs_for_query is list append state.selected_docs_for_query with outside_doc
+
+        delete "Notice" where true
+        create "Notice" with map:
+          "id" is "current"
+          "message" is "Using @document sources once without adding them to the project."
+        as notice_scope_docs_once
+  set state.selected_scope_count is list length of state.selected_docs_for_query
+  if scoped_document_count is greater than 0:
+    if state.selected_scope_count is 0:
+      set state.loading is false
+      delete "Notice" where true
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "No documents matched the @document scope."
+      as notice_missing_document_scope
+      return map:
+        "answer_text" is ""
+        "mode" is "document_scope_missing"
+  if state.selected_scope_count is 0:
+    find "DocumentLibrary" where selected is true
+    for each selected_doc in documentlibrary_results:
+      set state.in_active_project is false
+      for each active_upload_id in state.active_project_upload_ids:
+        if active_upload_id is selected_doc.upload_id:
+          set state.in_active_project is true
+      if state.in_active_project is true:
+        set state.selected_docs_for_query is list append state.selected_docs_for_query with selected_doc
+
+    set state.selected_scope_count is list length of state.selected_docs_for_query
+  if state.selected_scope_count is 0:
+    find "DocumentLibrary" where true
+    set state.available_scope_docs is list:
+    for each available_doc in documentlibrary_results:
+      set state.in_active_project is false
+      for each active_upload_id in state.active_project_upload_ids:
+        if active_upload_id is available_doc.upload_id:
+          set state.in_active_project is true
+      if state.in_active_project is true:
+        set state.available_scope_docs is list append state.available_scope_docs with available_doc
+
+    let available_scope_count is list length of state.available_scope_docs
+    if available_scope_count is greater than 0:
+      set state.selected_docs_for_query is state.available_scope_docs
+
+      delete "Notice" where true
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "No sources were marked in scope for the active project. Using project sources for this answer."
+      as notice_scope_fallback
+
+  for each selected_doc in state.selected_docs_for_query:
     if selected_doc.status is not "indexed":
       set state.needs_auto_ingest is true
   if state.needs_auto_ingest is true:
@@ -47,14 +231,37 @@ flow "ask_question": requires true
       input:
       output:
         status
+    if scoped_document_count is greater than 0:
+      find "DocumentLibrary" where true
+      set state.selected_docs_for_query is list:
+      for each selected_doc in documentlibrary_results:
+        set state.in_scoped_documents is false
+        for each scoped_upload_id in state.scope_document_ids:
+          if scoped_upload_id is selected_doc.upload_id:
+            set state.in_scoped_documents is true
+        if state.in_scoped_documents is true:
+          set state.selected_docs_for_query is list append state.selected_docs_for_query with selected_doc
+    else:
+      find "DocumentLibrary" where selected is true
+      set state.selected_docs_for_query is list:
+      for each selected_doc in documentlibrary_results:
+        set state.in_active_project is false
+        for each active_upload_id in state.active_project_upload_ids:
+          if active_upload_id is selected_doc.upload_id:
+            set state.in_active_project is true
+        if state.in_active_project is true:
+          set state.selected_docs_for_query is list append state.selected_docs_for_query with selected_doc
   set state.last_query is state.q
+  set state.user_prompt is state.q
+  if state.raw_message is not "":
+    set state.user_prompt is state.raw_message
   set state.user_message with:
     role is "user"
-    content is state.q
-    actions is list: "copy", "expand", "view_sources"
+    content is state.user_prompt
+    actions is list: "copy", "expand"
     attachments is list:
     citations is list:
-    trust is true
+    trust is false
   try:
     let history is state.chat.messages
     set state.chat.messages is list append history with state.user_message
@@ -109,10 +316,9 @@ flow "ask_question": requires true
     "id" is state.query_id
     "query" is state.q
     "route" is state.query_route
-    "source_scope" is "selected_documents"
+    "source_scope" is state.scope_project_id
   as question_row
-  find "DocumentLibrary" where selected is true
-  let selected_docs is documentlibrary_results
+  let selected_docs is state.selected_docs_for_query
   set state.scope_docs is list:
   set state.active_upload_ids is list:
   try:
@@ -135,6 +341,22 @@ flow "ask_question": requires true
     if state.include_doc is true:
       set state.scope_docs is list append state.scope_docs with doc
       set state.active_upload_ids is list append state.active_upload_ids with doc.upload_id
+
+  let filtered_scope_count is list length of state.scope_docs
+  if filtered_scope_count is 0:
+    let selected_count is list length of selected_docs
+    if selected_count is greater than 0:
+      set state.scope_docs is selected_docs
+      set state.active_upload_ids is list:
+      for each fallback_doc in selected_docs:
+        set state.active_upload_ids is list append state.active_upload_ids with fallback_doc.upload_id
+
+      delete "Notice" where true
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "No sources matched active tag filters. Using selected sources for this answer."
+      as notice_filter_fallback
+
   create "QueryProfile" with map:
     "id" is state.query_id
     "raw_query" is state.q
@@ -173,24 +395,31 @@ flow "ask_question": requires true
     set state.active_chunks is list:
     for each chunk in chunks:
       for each doc in state.scope_docs:
-        if doc.status is "indexed":
-          if doc.upload_id is chunk.upload_id:
-            set state.chunk_row with:
-              chunk_id is chunk.chunk_id
-              upload_id is chunk.upload_id
-              document_id is chunk.document_id
-              source_name is chunk.source_name
-              page_number is chunk.page_number
-              chunk_index is chunk.chunk_index
-              ingestion_phase is chunk.ingestion_phase
-              snippet is chunk.text
-              keywords is chunk.keywords
-              source_weight is doc.weight
-              tag is doc.primary_tag
-            set state.active_chunks is list append state.active_chunks with state.chunk_row
+        set state.include_chunk is false
+        if doc.upload_id is chunk.upload_id:
+          if doc.status is "indexed":
+            set state.include_chunk is true
+          else:
+            if doc.status is "failed":
+              if chunk.ingestion_phase is "fallback":
+                set state.include_chunk is true
+        if state.include_chunk is true:
+          set state.chunk_row with:
+            chunk_id is chunk.chunk_id
+            upload_id is chunk.upload_id
+            document_id is chunk.document_id
+            source_name is chunk.source_name
+            page_number is chunk.page_number
+            chunk_index is chunk.chunk_index
+            ingestion_phase is chunk.ingestion_phase
+            snippet is chunk.text
+            keywords is chunk.keywords
+            source_weight is doc.weight
+            tag is doc.primary_tag
+          set state.active_chunks is list append state.active_chunks with state.chunk_row
     let active_chunk_count is list length of state.active_chunks
     if active_chunk_count is 0:
-      set state.answer_text is "No indexed chunks in the active scope. Click Create index, then ask again."
+      set state.answer_text is "No indexed chunks are available in the active scope yet. Try again in a moment."
       set state.answer_mode is "no_indexed_chunks"
     else:
       set state.active_index with:
@@ -242,6 +471,15 @@ flow "ask_question": requires true
           set state.semantic_rows is list append state.semantic_rows with state.semantic_row
       with catch err:
         set state.semantic_rows is list:
+      set state.semantic_rows_unique is list:
+      for each sem in state.semantic_rows:
+        set state.semantic_exists is false
+        for each unique_sem in state.semantic_rows_unique:
+          if unique_sem.chunk_id is sem.chunk_id:
+            set state.semantic_exists is true
+        if state.semantic_exists is false:
+          set state.semantic_rows_unique is list append state.semantic_rows_unique with sem
+      set state.semantic_rows is state.semantic_rows_unique
       order state.semantic_rows by semantic_score from highest to lowest
       keep first state.retrieval.semantic_k items
       set state.lexical_rows is list:
@@ -443,6 +681,107 @@ flow "ask_question": requires true
           "decision" is state.reason
           "reason" is state.reason
         as explain_row
+
+      if state.rank_counter is 0:
+        set state.fallback_rank is 0
+        for each fallback_chunk in chunks:
+          set state.include_fallback_chunk is false
+          set state.fallback_source_weight is 1
+          set state.fallback_tag is "general"
+          for each scope_doc in state.scope_docs:
+            if scope_doc.upload_id is fallback_chunk.upload_id:
+              if scope_doc.status is "indexed":
+                set state.include_fallback_chunk is true
+                set state.fallback_source_weight is scope_doc.weight
+                set state.fallback_tag is scope_doc.primary_tag
+              else:
+                if scope_doc.status is "failed":
+                  if fallback_chunk.ingestion_phase is "fallback":
+                    set state.include_fallback_chunk is true
+                    set state.fallback_source_weight is scope_doc.weight
+                    set state.fallback_tag is scope_doc.primary_tag
+          if state.include_fallback_chunk is true:
+            set state.fallback_rank is state.fallback_rank + 1
+            if state.fallback_rank is at most state.retrieval.final_top_k:
+              set state.fallback_snippet is ""
+              try:
+                let fallback_text is fallback_chunk.text
+                if fallback_text is not "":
+                  set state.fallback_snippet is fallback_text
+              with catch err:
+                set state.fallback_snippet is state.fallback_snippet
+              if state.fallback_snippet is "":
+                try:
+                  let fallback_existing_snippet is fallback_chunk.snippet
+                  if fallback_existing_snippet is not "":
+                    set state.fallback_snippet is fallback_existing_snippet
+                with catch err:
+                  set state.fallback_snippet is state.fallback_snippet
+
+              set state.fallback_row with:
+                chunk_id is fallback_chunk.chunk_id
+                upload_id is fallback_chunk.upload_id
+                document_id is fallback_chunk.document_id
+                source_name is fallback_chunk.source_name
+                page_number is fallback_chunk.page_number
+                chunk_index is fallback_chunk.chunk_index
+                ingestion_phase is fallback_chunk.ingestion_phase
+                snippet is state.fallback_snippet
+                tag is state.fallback_tag
+                tier is "fallback_order"
+                semantic_rank is 999
+                lexical_rank is 999
+                lexical_hits is 0
+                semantic_score is 0
+                lexical_score is 0
+                source_weight is state.fallback_source_weight
+                merged_score is state.fallback_source_weight
+              set state.final_rows is list append state.final_rows with state.fallback_row
+              set state.reason is "Fallback order from indexed scope."
+              create "RankingDecision" with map:
+                "query_id" is state.query_id
+                "rank" is state.fallback_rank
+                "chunk_id" is fallback_chunk.chunk_id
+                "tier" is "fallback_order"
+                "merged_score" is state.fallback_source_weight
+                "selected" is true
+                "reason" is state.reason
+              as fallback_ranking_row
+              create "RetrievalCandidate" with map:
+                "query_id" is state.query_id
+                "mode" is "final"
+                "rank" is state.fallback_rank
+                "chunk_id" is fallback_chunk.chunk_id
+                "document_id" is fallback_chunk.document_id
+                "source_name" is fallback_chunk.source_name
+                "source_id" is fallback_chunk.upload_id
+                "tag" is state.fallback_tag
+                "page_number" is fallback_chunk.page_number
+                "chunk_index" is fallback_chunk.chunk_index
+                "ingestion_phase" is fallback_chunk.ingestion_phase
+                "tier" is "fallback_order"
+                "semantic_rank" is 999
+                "lexical_rank" is 999
+                "lexical_hits" is 0
+                "semantic_score" is 0
+                "lexical_score" is 0
+                "source_weight" is state.fallback_source_weight
+                "merged_score" is state.fallback_source_weight
+                "selected" is true
+                "reason" is state.reason
+                "snippet" is state.fallback_snippet
+              as fallback_final_candidate
+              create "ExplainCandidate" with map:
+                "query" is state.q
+                "order" is state.fallback_rank
+                "chunk_id" is fallback_chunk.chunk_id
+                "ingestion_phase" is fallback_chunk.ingestion_phase
+                "keyword_overlap" is 0
+                "page_number" is fallback_chunk.page_number
+                "chunk_index" is fallback_chunk.chunk_index
+                "decision" is state.reason
+                "reason" is state.reason
+              as fallback_explain_row
       let finalize_status is call flow "rag_engine.finalize_answer_state":
         input:
         output:
@@ -460,17 +799,35 @@ flow "ask_question": requires true
   set state.assistant_has_sources is false
   let assistant_citation_count is list length of state.answer_citations
   if assistant_citation_count is greater than 0:
-    set state.assistant_has_sources is true
+    if state.answer_mode is not "fallback_only":
+      set state.assistant_has_sources is true
+  set state.assistant_actions is list:
+    "copy"
+    "expand"
+  if state.assistant_has_sources is true:
+    set state.assistant_actions is list append state.assistant_actions with "view_sources"
+  set state.scope_indicator is ""
+  if state.scope_project_label is not "":
+    set state.scope_indicator is "Scope: #" + state.scope_project_label
+  else:
+    if state.scope_project_id is not "":
+      set state.scope_indicator is "Scope: #" + state.scope_project_id
+  let scope_document_count_for_indicator is list length of state.scope_document_ids
+  if scope_document_count_for_indicator is greater than 0:
+    if state.scope_indicator is "":
+      set state.scope_indicator is "Scope: @" + scope_document_count_for_indicator + " documents"
+    else:
+      set state.scope_indicator is state.scope_indicator + " + @" + scope_document_count_for_indicator + " documents"
+  set state.assistant_content is state.answer_text
+  if state.scope_indicator is not "":
+    set state.assistant_content is state.scope_indicator + "\n" + state.answer_text
   set state.assistant_message with:
     role is "assistant"
-    content is state.answer_text
-    actions is list:
-      "copy"
-      "expand"
-      "view_sources"
+    content is state.assistant_content
+    actions is state.assistant_actions
     attachments is list:
     citations is state.answer_citations
-    trust is state.assistant_has_sources
+    trust is false
   try:
     let history_after_query is state.chat.messages
     set state.chat.messages is list append history_after_query with state.assistant_message
@@ -487,13 +844,19 @@ flow "ask_question": requires true
     if state.answer_mode is "no_indexed_chunks":
       create "Notice" with map:
         "id" is "current"
-        "message" is "No indexed chunks in active scope. Run Create index, then ask again."
+        "message" is "No indexed chunks in active scope yet. Try again in a moment."
       as notice_no_chunks
     else:
-      create "Notice" with map:
-        "id" is "current"
-        "message" is "Answer ready with inline citations and trust indicator."
-      as notice_answer
+      if state.answer_mode is "fallback_only":
+        create "Notice" with map:
+          "id" is "current"
+          "message" is "Fallback chunk only. Upload searchable/OCR text, re-index, then ask again."
+        as notice_fallback_only
+      else:
+        create "Notice" with map:
+          "id" is "current"
+          "message" is "Answer ready with inline citations and trust indicator."
+        as notice_answer
   return map:
     "answer_text" is state.answer_text
     "mode" is state.answer_mode

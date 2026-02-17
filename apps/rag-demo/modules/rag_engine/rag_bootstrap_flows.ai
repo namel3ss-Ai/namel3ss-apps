@@ -8,9 +8,25 @@ contract flow "rag_engine.refresh_index_summary":
   output:
     status is text
 
+contract flow "rag_engine.ensure_projects":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_project_stats":
+  input:
+  output:
+    status is text
+
 contract flow "rag_engine.ask_question":
   input:
     message is text
+    query_text is text
+    project_scope is text
+    project_scope_label is text
+    project_scope_conflict is boolean
+    document_scope is json
+    document_scope_mode is text
   output:
     answer_text is text
     mode is text
@@ -56,7 +72,6 @@ flow "seed_examples": requires true
     "status" is "ok"
 
 flow "initialize_defaults": requires true
-  set state.bootstrap_ready is false
   try:
     let existing_bootstrap is state.bootstrap_ready
     set state.bootstrap_ready is existing_bootstrap
@@ -125,6 +140,10 @@ flow "initialize_defaults": requires true
     has_selection is false
 
   set state.selected_citation_source is ""
+  set state.ui.preview_source is map:
+    "title" is "Source preview"
+    "source_id" is ""
+    "error" is "Select a citation to open preview."
 
   try:
     let raw_uploads is state.uploads.documents
@@ -134,7 +153,16 @@ flow "initialize_defaults": requires true
 
   set state.bootstrap_ready is true
 
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
   let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+  let project_status is call flow "rag_engine.refresh_project_stats":
     input:
     output:
       status
@@ -158,6 +186,7 @@ flow "seed_sample_corpus": requires true
   delete "RankingDecision" where true
   delete "ExplainSummary" where true
   delete "ExplainCandidate" where true
+  delete "ProjectBinding" where true
   delete "Notice" where true
 
   set state.index with:
@@ -289,6 +318,24 @@ flow "seed_sample_corpus": requires true
     "last_error" is ""
   as sample_general
 
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::sample-product"
+    "project_id" is state.active_project_id
+    "upload_id" is "sample-product"
+  as sample_project_binding_product
+
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::sample-policy"
+    "project_id" is state.active_project_id
+    "upload_id" is "sample-policy"
+  as sample_project_binding_policy
+
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::sample-general"
+    "project_id" is state.active_project_id
+    "upload_id" is "sample-general"
+  as sample_project_binding_general
+
   create "Notice" with map:
     "id" is "current"
     "message" is "Sample corpus loaded. Ask a question to inspect deterministic retrieval."
@@ -311,6 +358,7 @@ flow "run_demo_mode_path": requires true
   delete "DocumentLibrary" where true
   delete "CitationCard" where true
   delete "ExplainSummary" where true
+  delete "ProjectBinding" where true
   delete "Notice" where true
 
   create "DocumentLibrary" with map:
@@ -332,6 +380,12 @@ flow "run_demo_mode_path": requires true
     "quality_note" is "Guided deterministic source."
     "last_error" is ""
   as guided_product
+
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::guided-product"
+    "project_id" is state.active_project_id
+    "upload_id" is "guided-product"
+  as guided_project_binding
 
   set state.total_documents is 1
   set state.ready_documents is 1
@@ -426,6 +480,13 @@ flow "run_demo_mode_path": requires true
     available is true
 
   set state.selected_citation_source is "guided-product"
+  set state.ui.preview_source is map:
+    "title" is "Guided Product Manual"
+    "source_id" is "guided-product"
+    "chunk_id" is "guided-product-1"
+    "document_id" is "guided-product"
+    "page_number" is 1
+    "snippet" is "Runtime-enforced citations keep every claim grounded in retrievable evidence."
   set state.drawer with:
     has_selection is true
 
@@ -433,6 +494,11 @@ flow "run_demo_mode_path": requires true
     "id" is "current"
     "message" is "Guided path complete. Review citations and explain details."
   as notice_guided_done
+
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
 
   return map:
     "status" is "seeded"
@@ -456,6 +522,7 @@ flow "reset_demo": requires true
   delete "RankingDecision" where true
   delete "ExplainSummary" where true
   delete "ExplainCandidate" where true
+  delete "ProjectBinding" where true
   delete "Notice" where true
 
   set state.index with:
@@ -466,6 +533,10 @@ flow "reset_demo": requires true
   set state.chat.citations is list:
   set state.loading is false
   set state.selected_citation_source is ""
+  set state.ui.preview_source is map:
+    "title" is "Source preview"
+    "source_id" is ""
+    "error" is "Select a citation to open preview."
 
   set state.drawer with:
     has_selection is false
@@ -489,6 +560,10 @@ flow "reset_demo": requires true
   as notice_reset
 
   let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+  let project_status is call flow "rag_engine.refresh_project_stats":
     input:
     output:
       status

@@ -38,7 +38,7 @@ def run_action(action_id: str, payload: dict | None = None) -> dict:
 def action_id_for_flow(flow_name: str, *, contains: str | None = None) -> str:
     ensure_provider_manifests()
     proc = subprocess.run(
-        [N3_BIN, "app.ai", "ui"],
+        [N3_BIN, "ui", "app.ai"],
         cwd=ROOT_DIR,
         capture_output=True,
         text=True,
@@ -83,6 +83,8 @@ def test_open_citation_selects_source() -> None:
     )
     assert data["result"] == "ok"
     assert data["state"]["selected_citation_source"] == "guided-product"
+    assert data["state"]["ui"]["preview_source"]["source_id"] == "guided-product"
+    assert data["state"]["ui"]["preview_source"]["chunk_id"] == "guided-product-1"
     assert data["state"]["drawer"]["has_selection"] is True
 
 
@@ -120,3 +122,9 @@ def test_composer_appends_assistant_message_when_no_selection() -> None:
     last_message = messages[-1]
     assert last_message["role"] == "assistant"
     assert last_message["content"] == data["result"]["answer_text"]
+
+
+def test_ingest_web_source_requires_url() -> None:
+    web_action = action_id_for_flow("rag_engine.ingest_web_source")
+    data = run_action(web_action, {"web_url": ""})
+    assert data["result"]["status"] == "missing_url"

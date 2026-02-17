@@ -13,6 +13,21 @@ contract flow "rag_engine.refresh_index_summary":
   output:
     status is text
 
+contract flow "rag_engine.ensure_projects":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_project_stats":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.ingest_selected":
+  input:
+  output:
+    status is text
+
 flow "sync_library": requires true
   let init_status is call flow "rag_engine.initialize_defaults":
     input:
@@ -24,7 +39,13 @@ flow "sync_library": requires true
     output:
       status
 
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
   set state.upload_entries is list:
+  set state.new_upload_count is 0
 
   try:
     let raw_uploads is state.uploads.documents
@@ -37,19 +58,116 @@ flow "sync_library": requires true
         let upload_entry is map get raw_uploads key upload_key
         set state.upload_entries is list append state.upload_entries with upload_entry
   with catch err:
-    set state.upload_entries is list:
+    set state.upload_entries is state.upload_entries
+
+  try:
+    let raw_chat_uploads is state.uploads.chat_files
+    try:
+      for each upload_entry in raw_chat_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+    with catch err:
+      let upload_keys is map keys raw_chat_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_chat_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+  with catch err:
+    set state.upload_entries is state.upload_entries
 
   let upload_count is list length of state.upload_entries
   if upload_count is 0:
     find "DocumentLibrary" where true
     let doc_count is list length of documentlibrary_results
     if doc_count is 0:
+      set state.recovered_chunks is list:
+      try:
+        let current_index is state.index
+        let maybe_chunks is map get current_index key "chunks"
+        set state.recovered_chunks is maybe_chunks
+      with catch err:
+        set state.recovered_chunks is list:
+
+      set state.recovered_upload_ids is list:
+      for each recovered_chunk in state.recovered_chunks:
+        set state.recovered_upload_id is ""
+        try:
+          let maybe_upload_id is recovered_chunk.upload_id
+          if maybe_upload_id is not "":
+            set state.recovered_upload_id is maybe_upload_id
+        with catch err:
+          set state.recovered_upload_id is state.recovered_upload_id
+
+        if state.recovered_upload_id is not "":
+          set state.already_recovered is false
+          for each seen_upload_id in state.recovered_upload_ids:
+            if seen_upload_id is state.recovered_upload_id:
+              set state.already_recovered is true
+
+          if state.already_recovered is false:
+            set state.recovered_upload_ids is list append state.recovered_upload_ids with state.recovered_upload_id
+            set state.recovered_source_name is state.recovered_upload_id
+            try:
+              let maybe_source_name is recovered_chunk.source_name
+              if maybe_source_name is not "":
+                set state.recovered_source_name is maybe_source_name
+            with catch err:
+              set state.recovered_source_name is state.recovered_source_name
+
+            set state.recovered_quality is "pass"
+            try:
+              let maybe_low_quality is recovered_chunk.low_quality
+              if maybe_low_quality is true:
+                set state.recovered_quality is "warn"
+            with catch err:
+              set state.recovered_quality is state.recovered_quality
+
+            create "DocumentLibrary" with map:
+              "id" is state.recovered_upload_id
+              "upload_id" is state.recovered_upload_id
+              "document_id" is state.recovered_upload_id
+              "source_name" is state.recovered_source_name
+              "source_type" is "PDF"
+              "status" is "indexed"
+              "ingestion_stage" is "indexed"
+              "progress_percent" is 100
+              "quality" is state.recovered_quality
+              "selected" is true
+              "status_label" is "Indexed • Recovered"
+              "scope_label" is "general • priority"
+              "weight" is 1
+              "tags" is list: "general"
+              "primary_tag" is "general"
+              "quality_note" is "Recovered from persisted index chunks."
+              "last_error" is ""
+            as recovered_doc
+
+      let recovered_count is list length of state.recovered_upload_ids
+      if recovered_count is greater than 0:
+        delete "Notice" where true
+        create "Notice" with map:
+          "id" is "current"
+          "message" is "Recovered indexed sources from persisted state."
+        as notice_recovered
+        let summary_status is call flow "rag_engine.refresh_index_summary":
+          input:
+          output:
+            status
+        let project_status is call flow "rag_engine.refresh_project_stats":
+          input:
+          output:
+            status
+
       delete "Notice" where true
       create "Notice" with map:
         "id" is "current"
         "message" is "Add documents or load the sample corpus to begin."
       as notice_empty
+      delete "ProjectKnowledgeItem" where true
+      delete "LibraryItem" where true
       let summary_status is call flow "rag_engine.refresh_index_summary":
+        input:
+        output:
+          status
+      let project_status is call flow "rag_engine.refresh_project_stats":
         input:
         output:
           status
@@ -129,12 +247,88 @@ flow "sync_library": requires true
         "quality_note" is "Upload synced. Re-index to make this source searchable."
         "last_error" is ""
       as library_row
+      set state.new_upload_count is state.new_upload_count + 1
+
+  find "DocumentLibrary" where true
+  set state.known_upload_ids is list:
+  for each doc in documentlibrary_results:
+    set state.known_upload_ids is list append state.known_upload_ids with doc.upload_id
+
+  find "ProjectBinding" where true
+  for each binding in projectbinding_results:
+    set state.keep_binding is false
+    for each known_upload_id in state.known_upload_ids:
+      if known_upload_id is binding.upload_id:
+        set state.keep_binding is true
+    if state.keep_binding is false:
+      delete "ProjectBinding" where id is binding.id
+
+  if state.new_upload_count is greater than 0:
+    let auto_ingest_status is call flow "rag_engine.ingest_selected":
+      input:
+      output:
+        status
+
+  delete "ProjectKnowledgeItem" where true
+  delete "LibraryItem" where true
+
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
+  find "DocumentLibrary" where true
+  for each doc in documentlibrary_results:
+    set state.in_active_project is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.in_active_project is true
+
+    set state.membership_label is "Library only"
+    if state.in_active_project is true:
+      set state.membership_label is "In this project"
+
+    create "LibraryItem" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "status_label" is doc.status_label
+      "membership_label" is state.membership_label
+      "in_active_project" is state.in_active_project
+    as library_item
+
+    if state.in_active_project is true:
+      create "ProjectKnowledgeItem" with map:
+        "id" is doc.id
+        "project_id" is state.active_project_id
+        "upload_id" is doc.upload_id
+        "document_id" is doc.document_id
+        "source_name" is doc.source_name
+        "source_type" is doc.source_type
+        "status" is doc.status
+        "status_label" is doc.status_label
+        "scope_label" is doc.scope_label
+      as project_item
+
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
 
   delete "Notice" where true
-  create "Notice" with map:
-    "id" is "current"
-    "message" is "Uploads synced. Use bulk actions to tag and index selected sources."
-  as notice_synced
+  if state.new_upload_count is greater than 0:
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Uploads synced and indexed in the library. Add files to a project or mention with @."
+    as notice_synced_indexed
+  else:
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Library synced."
+    as notice_synced
 
   let summary_status is call flow "rag_engine.refresh_index_summary":
     input:
@@ -271,12 +465,350 @@ flow "remove_document_selection": requires true
 
   return selected_upload_id
 
+flow "rename_document": requires true
+  set state.rename_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.rename_upload_id is row_upload_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.rename_upload_id is "":
+      if direct_upload_id is not "":
+        set state.rename_upload_id is direct_upload_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  if state.rename_upload_id is "":
+    return "missing_document"
+
+  set state.rename_source_name is ""
+  try:
+    let requested_source_name is input.source_name
+    if requested_source_name is not "":
+      set state.rename_source_name is requested_source_name
+  with catch err:
+    set state.rename_source_name is state.rename_source_name
+
+  try:
+    let requested_file_name is input.file_name
+    if state.rename_source_name is "":
+      if requested_file_name is not "":
+        set state.rename_source_name is requested_file_name
+  with catch err:
+    set state.rename_source_name is state.rename_source_name
+
+  try:
+    let requested_name is input.name
+    if state.rename_source_name is "":
+      if requested_name is not "":
+        set state.rename_source_name is requested_name
+  with catch err:
+    set state.rename_source_name is state.rename_source_name
+
+  if state.rename_source_name is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "File name can't be empty."
+    as notice_document_rename_empty
+    return "missing_name"
+
+  find "DocumentLibrary" where upload_id is state.rename_upload_id
+  let rename_doc_count is list length of documentlibrary_results
+  if rename_doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is state.rename_upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is state.rename_source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is doc.scope_label
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as renamed_doc
+
+  try:
+    let existing_chunks is state.index.chunks
+    set state.renamed_chunks is list:
+    for each chunk in existing_chunks:
+      set state.next_source_name is chunk.source_name
+      if chunk.upload_id is state.rename_upload_id:
+        set state.next_source_name is state.rename_source_name
+      set state.renamed_chunk with:
+        chunk_id is chunk.chunk_id
+        upload_id is chunk.upload_id
+        document_id is chunk.document_id
+        source_name is state.next_source_name
+        page_number is chunk.page_number
+        chunk_index is chunk.chunk_index
+        ingestion_phase is chunk.ingestion_phase
+        text is chunk.text
+        keywords is chunk.keywords
+      set state.renamed_chunks is list append state.renamed_chunks with state.renamed_chunk
+    set state.index with:
+      chunks is state.renamed_chunks
+  with catch err:
+    set state.index is state.index
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Renamed file to " + state.rename_source_name + "."
+  as notice_document_renamed
+
+  return "ok"
+
+flow "add_document_to_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.target_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.target_upload_id is row_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.target_upload_id is "":
+      if direct_upload_id is not "":
+        set state.target_upload_id is direct_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  if state.target_upload_id is "":
+    return "missing_document"
+
+  set state.target_project_id is state.active_project_id
+  try:
+    let requested_project_id is input.project_id
+    if requested_project_id is not "":
+      set state.target_project_id is requested_project_id
+  with catch err:
+    set state.target_project_id is state.target_project_id
+
+  if state.target_project_id is "":
+    return "missing_project"
+
+  find "Project" where id is state.target_project_id
+  let project_count is list length of project_results
+  if project_count is 0:
+    return "project_not_found"
+
+  find "DocumentLibrary" where upload_id is state.target_upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  find "ProjectBinding" where id is state.target_project_id + "::" + state.target_upload_id
+  let binding_count is list length of projectbinding_results
+  if binding_count is 0:
+    create "ProjectBinding" with map:
+      "id" is state.target_project_id + "::" + state.target_upload_id
+      "project_id" is state.target_project_id
+      "upload_id" is state.target_upload_id
+    as added_binding
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "File added to active project."
+  as notice_added_to_project
+
+  return "ok"
+
+flow "move_document_to_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.move_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.move_upload_id is row_upload_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.move_upload_id is "":
+      if direct_upload_id is not "":
+        set state.move_upload_id is direct_upload_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  if state.move_upload_id is "":
+    return "missing_document"
+
+  set state.move_target_project_id is ""
+  try:
+    let requested_project_id is input.project_id
+    if requested_project_id is not "":
+      set state.move_target_project_id is requested_project_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  if state.move_target_project_id is "":
+    set state.move_target_project_id is state.active_project_id
+
+  if state.move_target_project_id is "":
+    return "missing_project"
+
+  find "Project" where id is state.move_target_project_id
+  let move_target_count is list length of project_results
+  if move_target_count is 0:
+    return "project_not_found"
+
+  find "DocumentLibrary" where upload_id is state.move_upload_id
+  let move_doc_count is list length of documentlibrary_results
+  if move_doc_count is 0:
+    return "not_found"
+
+  find "ProjectBinding" where upload_id is state.move_upload_id
+  for each binding in projectbinding_results:
+    if binding.project_id is not state.move_target_project_id:
+      delete "ProjectBinding" where id is binding.id
+
+  find "ProjectBinding" where id is state.move_target_project_id + "::" + state.move_upload_id
+  let existing_target_binding_count is list length of projectbinding_results
+  if existing_target_binding_count is 0:
+    create "ProjectBinding" with map:
+      "id" is state.move_target_project_id + "::" + state.move_upload_id
+      "project_id" is state.move_target_project_id
+      "upload_id" is state.move_upload_id
+    as moved_binding
+
+  set state.active_project_id is state.move_target_project_id
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  find "Project" where id is state.move_target_project_id
+  let moved_target_count is list length of project_results
+  set state.move_target_label is state.move_target_project_id
+  if moved_target_count is greater than 0:
+    let moved_project is list get project_results at 0
+    set state.move_target_label is moved_project.name
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Moved file to " + state.move_target_label + "."
+  as notice_moved_to_project
+
+  return "ok"
+
+flow "remove_document_from_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.target_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.target_upload_id is row_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.target_upload_id is "":
+      if direct_upload_id is not "":
+        set state.target_upload_id is direct_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  if state.target_upload_id is "":
+    return "missing_document"
+
+  set state.target_project_id is state.active_project_id
+  try:
+    let requested_project_id is input.project_id
+    if requested_project_id is not "":
+      set state.target_project_id is requested_project_id
+  with catch err:
+    set state.target_project_id is state.target_project_id
+
+  if state.target_project_id is "":
+    return "missing_project"
+
+  delete "ProjectBinding" where id is state.target_project_id + "::" + state.target_upload_id
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "File removed from active project."
+  as notice_removed_from_project
+
+  return "ok"
+
 flow "bulk_select_all": requires true
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
   find "DocumentLibrary" where true
   let docs is documentlibrary_results
   delete "DocumentLibrary" where true
 
   for each doc in docs:
+    set state.in_active_project is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.in_active_project is true
+
+    set state.next_selected is doc.selected
+    if state.in_active_project is true:
+      set state.next_selected is true
+
     create "DocumentLibrary" with map:
       "id" is doc.id
       "upload_id" is doc.upload_id
@@ -287,7 +819,7 @@ flow "bulk_select_all": requires true
       "ingestion_stage" is doc.ingestion_stage
       "progress_percent" is doc.progress_percent
       "quality" is doc.quality
-      "selected" is true
+      "selected" is state.next_selected
       "status_label" is doc.status_label
       "scope_label" is doc.primary_tag + " • priority"
       "weight" is doc.weight
@@ -300,17 +832,36 @@ flow "bulk_select_all": requires true
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "All sources selected."
+    "message" is "All sources in the active project were selected."
   as notice_bulk_select
 
   return "ok"
 
 flow "bulk_clear_selection": requires true
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
   find "DocumentLibrary" where true
   let docs is documentlibrary_results
   delete "DocumentLibrary" where true
 
   for each doc in docs:
+    set state.in_active_project is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.in_active_project is true
+
+    set state.next_selected is doc.selected
+    if state.in_active_project is true:
+      set state.next_selected is false
+
     create "DocumentLibrary" with map:
       "id" is doc.id
       "upload_id" is doc.upload_id
@@ -321,7 +872,7 @@ flow "bulk_clear_selection": requires true
       "ingestion_stage" is doc.ingestion_stage
       "progress_percent" is doc.progress_percent
       "quality" is doc.quality
-      "selected" is false
+      "selected" is state.next_selected
       "status_label" is doc.status_label
       "scope_label" is doc.primary_tag + " • priority"
       "weight" is doc.weight
@@ -334,7 +885,7 @@ flow "bulk_clear_selection": requires true
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "Selection cleared."
+    "message" is "Selection cleared for the active project."
   as notice_bulk_clear
 
   return "ok"
@@ -350,6 +901,9 @@ flow "bulk_remove_selected": requires true
       set state.removed_ids is list append state.removed_ids with doc.upload_id
     else:
       create "DocumentLibrary" with doc as kept_doc
+
+  for each removed_id in state.removed_ids:
+    delete "ProjectBinding" where upload_id is removed_id
 
   try:
     let chunks is state.index.chunks
@@ -377,6 +931,20 @@ flow "bulk_remove_selected": requires true
     input:
     output:
       status
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Selected sources removed."
+  as notice_bulk_remove_done
 
   return "ok"
 
@@ -393,6 +961,8 @@ flow "remove_document": requires true
   for each doc in docs:
     if doc.upload_id is not removed_upload_id:
       create "DocumentLibrary" with doc as kept_doc
+
+  delete "ProjectBinding" where upload_id is removed_upload_id
 
   try:
     let chunks is state.index.chunks
@@ -416,6 +986,20 @@ flow "remove_document": requires true
     input:
     output:
       status
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "File deleted from library."
+  as notice_removed_final
 
   return removed_upload_id
 

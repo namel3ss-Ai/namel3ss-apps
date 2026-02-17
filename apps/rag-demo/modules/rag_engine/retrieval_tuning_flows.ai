@@ -294,6 +294,10 @@ flow "reset_chat": requires true
   set state.chat.citations is list:
   set state.loading is false
   set state.selected_citation_source is ""
+  set state.ui.preview_source is map:
+    "title" is "Source preview"
+    "source_id" is ""
+    "error" is "Select a citation to open preview."
 
   set state.drawer with:
     has_selection is false

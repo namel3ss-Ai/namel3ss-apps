@@ -1,0 +1,613 @@
+contract flow "rag_engine.refresh_project_stats":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.ensure_projects":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.sync_library":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.reset_chat":
+  input:
+  output:
+    status is text
+
+flow "refresh_project_stats": requires true
+  find "Project" where true
+  let project_count is list length of project_results
+  if project_count is 0:
+    return map:
+      "status" is "no_projects"
+
+  for each project in project_results:
+    set state.file_count is 0
+    find "ProjectBinding" where project_id is project.id
+    for each binding in projectbinding_results:
+      find "DocumentLibrary" where upload_id is binding.upload_id
+      let doc_count is list length of documentlibrary_results
+      if doc_count is greater than 0:
+        set state.file_count is state.file_count + 1
+
+    set state.status_label is "Empty"
+    if state.file_count is 1:
+      set state.status_label is "1 file"
+    else:
+      if state.file_count is greater than 1:
+        set state.status_label is "Multiple files"
+
+    set state.is_active is false
+    if project.id is state.active_project_id:
+      set state.is_active is true
+      set state.status_label is "Active • " + state.status_label
+
+    set state.project_icon is "folder_info"
+
+    delete "Project" where id is project.id
+    create "Project" with map:
+      "id" is project.id
+      "name" is project.name
+      "icon" is state.project_icon
+      "active" is state.is_active
+      "status_label" is state.status_label
+    as project_stat_row
+
+  return map:
+    "status" is "ok"
+
+flow "ensure_projects": requires true
+  find "Project" where true
+  let project_count is list length of project_results
+
+  if project_count is 0:
+    create "Project" with map:
+      "id" is "default"
+      "name" is "Default Project"
+      "icon" is "folder_info"
+      "active" is true
+      "status_label" is "Active • Empty"
+    as default_project
+
+    set state.active_project_id is "default"
+  else:
+    set state.requested_active_project_id is ""
+
+    try:
+      let requested_active_project_id is state.active_project_id
+      if requested_active_project_id is not "":
+        set state.requested_active_project_id is requested_active_project_id
+    with catch err:
+      set state.requested_active_project_id is state.requested_active_project_id
+
+    set state.active_project_id is state.requested_active_project_id
+
+    if state.active_project_id is "":
+      for each project in project_results:
+        if project.active is true:
+          set state.active_project_id is project.id
+
+    if state.active_project_id is "":
+      let first_project is list get project_results at 0
+      set state.active_project_id is first_project.id
+
+  let refresh_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "create_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  find "Project" where true
+  let project_count is list length of project_results
+
+  if project_count is greater than 5:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Project limit reached. Keep up to six active projects."
+    as notice_project_limit
+
+    return map:
+      "status" is "limit_reached"
+
+  set state.new_project_id is ""
+  set state.new_project_name is ""
+
+  find "Project" where id is "project-two"
+  let project_two_count is list length of project_results
+  if project_two_count is 0:
+    set state.new_project_id is "project-two"
+    set state.new_project_name is "Project Two"
+
+  if state.new_project_id is "":
+    find "Project" where id is "project-three"
+    let project_three_count is list length of project_results
+    if project_three_count is 0:
+      set state.new_project_id is "project-three"
+      set state.new_project_name is "Project Three"
+
+  if state.new_project_id is "":
+    find "Project" where id is "project-four"
+    let project_four_count is list length of project_results
+    if project_four_count is 0:
+      set state.new_project_id is "project-four"
+      set state.new_project_name is "Project Four"
+
+  if state.new_project_id is "":
+    find "Project" where id is "project-five"
+    let project_five_count is list length of project_results
+    if project_five_count is 0:
+      set state.new_project_id is "project-five"
+      set state.new_project_name is "Project Five"
+
+  if state.new_project_id is "":
+    find "Project" where id is "project-six"
+    let project_six_count is list length of project_results
+    if project_six_count is 0:
+      set state.new_project_id is "project-six"
+      set state.new_project_name is "Project Six"
+
+  if state.new_project_id is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Project limit reached. Keep up to six active projects."
+    as notice_project_limit_no_slot
+    return map:
+      "status" is "limit_reached"
+
+  create "Project" with map:
+    "id" is state.new_project_id
+    "name" is state.new_project_name
+    "icon" is "folder_info"
+    "active" is false
+    "status_label" is "Empty"
+  as new_project
+
+  set state.active_project_id is state.new_project_id
+
+  let refresh_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  let library_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Created and switched to " + state.new_project_name + "."
+  as notice_project_created
+
+  return map:
+    "status" is "ok"
+
+flow "duplicate_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.duplicate_target_project_id is ""
+
+  try:
+    let row_project_id is input.row.id
+    if row_project_id is not "":
+      set state.duplicate_target_project_id is row_project_id
+  with catch err:
+    set state.duplicate_target_project_id is state.duplicate_target_project_id
+
+  try:
+    let direct_project_id is input.project_id
+    if state.duplicate_target_project_id is "":
+      if direct_project_id is not "":
+        set state.duplicate_target_project_id is direct_project_id
+  with catch err:
+    set state.duplicate_target_project_id is state.duplicate_target_project_id
+
+  if state.duplicate_target_project_id is "":
+    set state.duplicate_target_project_id is state.active_project_id
+
+  if state.duplicate_target_project_id is "":
+    return map:
+      "status" is "missing_project"
+
+  find "Project" where id is state.duplicate_target_project_id
+  let target_count is list length of project_results
+  if target_count is 0:
+    return map:
+      "status" is "not_found"
+
+  let target_project is list get project_results at 0
+  find "Project" where true
+  let total_project_count is list length of project_results
+  if total_project_count is greater than 5:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Project limit reached. Keep up to six active projects."
+    as notice_duplicate_project_limit
+    return map:
+      "status" is "limit_reached"
+
+  set state.duplicate_project_id is target_project.id + "-copy"
+  find "Project" where id is state.duplicate_project_id
+  let duplicate_id_count is list length of project_results
+  if duplicate_id_count is greater than 0:
+    set state.duplicate_project_id is target_project.id + "-copy-" + (total_project_count + 1)
+
+  set state.duplicate_project_name is target_project.name + " Copy"
+
+  create "Project" with map:
+    "id" is state.duplicate_project_id
+    "name" is state.duplicate_project_name
+    "icon" is "folder_info"
+    "active" is false
+    "status_label" is "Empty"
+  as duplicated_project
+
+  find "ProjectBinding" where project_id is state.duplicate_target_project_id
+  for each binding in projectbinding_results:
+    create "ProjectBinding" with map:
+      "id" is state.duplicate_project_id + "::" + binding.upload_id
+      "project_id" is state.duplicate_project_id
+      "upload_id" is binding.upload_id
+    as duplicated_binding
+
+  set state.active_project_id is state.duplicate_project_id
+
+  let refresh_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  let library_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Duplicated project " + target_project.name + "."
+  as notice_project_duplicated
+
+  return map:
+    "status" is "ok"
+
+flow "share_project": requires true
+  set state.shared_project_id is ""
+  try:
+    let row_project_id is input.row.id
+    if row_project_id is not "":
+      set state.shared_project_id is row_project_id
+  with catch err:
+    set state.shared_project_id is state.shared_project_id
+
+  if state.shared_project_id is "":
+    set state.shared_project_id is state.active_project_id
+
+  if state.shared_project_id is "":
+    return map:
+      "status" is "missing_project"
+
+  find "Project" where id is state.shared_project_id
+  let shared_count is list length of project_results
+  if shared_count is 0:
+    return map:
+      "status" is "not_found"
+
+  let shared_project is list get project_results at 0
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Share link is not configured yet for " + shared_project.name + "."
+  as notice_project_share_pending
+
+  return map:
+    "status" is "pending"
+
+flow "archive_project": requires true
+  set state.archived_project_id is ""
+  try:
+    let row_project_id is input.row.id
+    if row_project_id is not "":
+      set state.archived_project_id is row_project_id
+  with catch err:
+    set state.archived_project_id is state.archived_project_id
+
+  if state.archived_project_id is "":
+    set state.archived_project_id is state.active_project_id
+
+  if state.archived_project_id is "":
+    return map:
+      "status" is "missing_project"
+
+  find "Project" where id is state.archived_project_id
+  let archived_count is list length of project_results
+  if archived_count is 0:
+    return map:
+      "status" is "not_found"
+
+  let archived_project is list get project_results at 0
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Archive mode is not enabled yet for " + archived_project.name + "."
+  as notice_project_archive_pending
+
+  return map:
+    "status" is "pending"
+
+flow "rename_active_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.rename_target_project_id is ""
+
+  try:
+    let row_project_id is input.row.id
+    if row_project_id is not "":
+      set state.rename_target_project_id is row_project_id
+  with catch err:
+    set state.rename_target_project_id is state.rename_target_project_id
+
+  try:
+    let direct_project_id is input.project_id
+    if state.rename_target_project_id is "":
+      if direct_project_id is not "":
+        set state.rename_target_project_id is direct_project_id
+  with catch err:
+    set state.rename_target_project_id is state.rename_target_project_id
+
+  try:
+    let direct_id is input.id
+    if state.rename_target_project_id is "":
+      if direct_id is not "":
+        set state.rename_target_project_id is direct_id
+  with catch err:
+    set state.rename_target_project_id is state.rename_target_project_id
+
+  if state.rename_target_project_id is "":
+    set state.rename_target_project_id is state.active_project_id
+
+  if state.rename_target_project_id is "":
+    return map:
+      "status" is "missing_project"
+
+  set state.rename_project_name is ""
+  try:
+    let requested_project_name is input.project_name
+    if requested_project_name is not "":
+      set state.rename_project_name is requested_project_name
+  with catch err:
+    set state.rename_project_name is state.rename_project_name
+
+  if state.rename_project_name is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Enter a project name, then press Enter to rename."
+    as notice_missing_project_name
+    return map:
+      "status" is "missing_name"
+
+  find "Project" where id is state.rename_target_project_id
+  let target_count is list length of project_results
+  if target_count is 0:
+    return map:
+      "status" is "not_found"
+
+  let target_project is list get project_results at 0
+  set state.rename_project_icon is "folder_info"
+  delete "Project" where id is state.rename_target_project_id
+  create "Project" with map:
+    "id" is state.rename_target_project_id
+    "name" is state.rename_project_name
+    "icon" is state.rename_project_icon
+    "active" is target_project.active
+    "status_label" is target_project.status_label
+  as renamed_project
+
+  if state.active_project_id is "":
+    set state.active_project_id is state.rename_target_project_id
+
+  let refresh_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  let library_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Renamed project to " + state.rename_project_name + "."
+  as notice_project_renamed
+
+  return map:
+    "status" is "ok"
+
+flow "set_active_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.target_project_id is ""
+
+  try:
+    let row_project_id is input.row.id
+    if row_project_id is not "":
+      set state.target_project_id is row_project_id
+  with catch err:
+    set state.target_project_id is state.target_project_id
+
+  try:
+    let direct_project_id is input.project_id
+    if state.target_project_id is "":
+      if direct_project_id is not "":
+        set state.target_project_id is direct_project_id
+  with catch err:
+    set state.target_project_id is state.target_project_id
+
+  try:
+    let direct_id is input.id
+    if state.target_project_id is "":
+      if direct_id is not "":
+        set state.target_project_id is direct_id
+  with catch err:
+    set state.target_project_id is state.target_project_id
+
+  if state.target_project_id is "":
+    return map:
+      "status" is "missing_project"
+
+  find "Project" where id is state.target_project_id
+  let project_count is list length of project_results
+  if project_count is 0:
+    return map:
+      "status" is "not_found"
+
+  let target_project is list get project_results at 0
+  set state.active_project_id is state.target_project_id
+
+  let refresh_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  let library_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Active project set to " + target_project.name + "."
+  as notice_active_project
+
+  return map:
+    "status" is "ok"
+
+flow "delete_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.delete_target_project_id is ""
+
+  try:
+    let row_project_id is input.row.id
+    if row_project_id is not "":
+      set state.delete_target_project_id is row_project_id
+  with catch err:
+    set state.delete_target_project_id is state.delete_target_project_id
+
+  try:
+    let direct_project_id is input.project_id
+    if state.delete_target_project_id is "":
+      if direct_project_id is not "":
+        set state.delete_target_project_id is direct_project_id
+  with catch err:
+    set state.delete_target_project_id is state.delete_target_project_id
+
+  try:
+    let direct_id is input.id
+    if state.delete_target_project_id is "":
+      if direct_id is not "":
+        set state.delete_target_project_id is direct_id
+  with catch err:
+    set state.delete_target_project_id is state.delete_target_project_id
+
+  if state.delete_target_project_id is "":
+    set state.delete_target_project_id is state.active_project_id
+
+  if state.delete_target_project_id is "":
+    return map:
+      "status" is "missing_project"
+
+  find "Project" where true
+  let total_project_count is list length of project_results
+  if total_project_count is less than 2:
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "At least one project is required. Create another project before deleting this one."
+    as notice_delete_blocked
+    return map:
+      "status" is "blocked_last_project"
+
+  find "Project" where id is state.delete_target_project_id
+  let target_count is list length of project_results
+  if target_count is 0:
+    return map:
+      "status" is "not_found"
+
+  let target_project is list get project_results at 0
+  delete "ProjectBinding" where project_id is state.delete_target_project_id
+  delete "Project" where id is state.delete_target_project_id
+
+  if state.active_project_id is state.delete_target_project_id:
+    set state.active_project_id is ""
+    find "Project" where true
+    let remaining_project_count is list length of project_results
+    if remaining_project_count is greater than 0:
+      let fallback_project is list get project_results at 0
+      set state.active_project_id is fallback_project.id
+
+  let refresh_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  let library_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  let reset_status is call flow "rag_engine.reset_chat":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Deleted project " + target_project.name + "."
+  as notice_project_deleted
+
+  return map:
+    "status" is "ok"

@@ -1,11 +1,21 @@
 ai "rag_writer_ai":
   provider is "openai"
   model is "gpt-3.5-turbo"
-  system_prompt is "You are a grounded RAG assistant. Summarize only with cited evidence."
+  system_prompt is "You are a grounded RAG assistant. Summarize only with cited evidence. Use inline numeric citations like [1], [2], [3] that map to evidence IDs."
   memory:
     short_term is 0
     semantic is false
     profile is false
+
+tool "fetch web page":
+  implemented using http
+
+  input:
+    url is text
+
+  output:
+    status is number
+    body is text
 
 record "DocumentLibrary":
   fields:
@@ -26,6 +36,44 @@ record "DocumentLibrary":
     primary_tag is text must be present
     quality_note is text must be present
     last_error is text must be present
+
+record "Project":
+  fields:
+    id is text must be present
+    name is text must be present
+    icon is text must be present
+    active is boolean must be present
+    status_label is text must be present
+
+record "ProjectBinding":
+  fields:
+    id is text must be present
+    project_id is text must be present
+    upload_id is text must be present
+
+record "ProjectKnowledgeItem":
+  fields:
+    id is text must be present
+    project_id is text must be present
+    upload_id is text must be present
+    document_id is text must be present
+    source_name is text must be present
+    source_type is text must be present
+    status is text must be present
+    status_label is text must be present
+    scope_label is text must be present
+
+record "LibraryItem":
+  fields:
+    id is text must be present
+    upload_id is text must be present
+    document_id is text must be present
+    source_name is text must be present
+    source_type is text must be present
+    status is text must be present
+    status_label is text must be present
+    membership_label is text must be present
+    in_active_project is boolean must be present
 
 record "ExampleQuestion":
   fields:

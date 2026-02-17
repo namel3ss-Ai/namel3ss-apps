@@ -8,20 +8,278 @@ contract flow "rag_engine.refresh_index_summary":
   output:
     status is text
 
+contract flow "rag_engine.ensure_projects":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_project_stats":
+  input:
+  output:
+    status is text
+
+flow "ingest_web_source": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.request_url is ""
+  try:
+    let requested_web_url is input.web_url
+    if requested_web_url is not "":
+      set state.request_url is requested_web_url
+  with catch err:
+    set state.request_url is state.request_url
+
+  try:
+    let requested_url is input.url
+    if state.request_url is "":
+      if requested_url is not "":
+        set state.request_url is requested_url
+  with catch err:
+    set state.request_url is state.request_url
+
+  if state.request_url is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Provide a URL before adding a web source."
+    as notice_missing_web_url
+    return map:
+      "status" is "missing_url"
+
+  set state.web_upload_id is "web::" + state.request_url
+  set state.web_source_name is state.request_url
+  set state.web_selected is true
+  set state.web_weight is 1
+  set state.web_tags is list: "general"
+  set state.web_primary_tag is "general"
+
+  find "DocumentLibrary" where upload_id is state.web_upload_id
+  let existing_doc_count is list length of documentlibrary_results
+  if existing_doc_count is greater than 0:
+    let existing_doc is list get documentlibrary_results at 0
+    set state.web_source_name is existing_doc.source_name
+    set state.web_selected is existing_doc.selected
+    set state.web_weight is existing_doc.weight
+    set state.web_tags is existing_doc.tags
+    set state.web_primary_tag is existing_doc.primary_tag
+
+  delete "DocumentLibrary" where upload_id is state.web_upload_id
+  create "DocumentLibrary" with map:
+    "id" is state.web_upload_id
+    "upload_id" is state.web_upload_id
+    "document_id" is state.web_upload_id
+    "source_name" is state.web_source_name
+    "source_type" is "WEB"
+    "status" is "indexing"
+    "ingestion_stage" is "fetching"
+    "progress_percent" is 30
+    "quality" is "pending"
+    "selected" is state.web_selected
+    "status_label" is "Fetching • WEB"
+    "scope_label" is state.web_primary_tag + " • priority"
+    "weight" is state.web_weight
+    "tags" is state.web_tags
+    "primary_tag" is state.web_primary_tag
+    "quality_note" is "Fetching web page content."
+    "last_error" is ""
+  as web_fetching_row
+
+  set state.web_status is 0
+  set state.web_body is ""
+  set state.web_error is ""
+
+  try:
+    let web_response is fetch web page:
+      url is state.request_url
+
+    try:
+      let response_status is web_response.status
+      set state.web_status is response_status
+    with catch err:
+      set state.web_status is state.web_status
+
+    try:
+      let response_body is web_response.body
+      if response_body is not "":
+        set state.web_body is response_body
+    with catch err:
+      set state.web_body is state.web_body
+  with catch err:
+    set state.web_error is "web_fetch_failed"
+
+  set state.web_ok is true
+  if state.web_error is not "":
+    set state.web_ok is false
+  if state.web_status is not 200:
+    set state.web_ok is false
+  if state.web_body is "":
+    set state.web_ok is false
+
+  if state.web_ok is false:
+    set state.web_error_note is "Web fetch failed. Check URL accessibility and try again."
+    if state.web_status is not 200:
+      set state.web_error_note is "Web fetch returned non-200 status. Use a reachable public URL."
+    if state.web_body is "":
+      set state.web_error_note is "Web fetch returned no text body. Try a text-rich page."
+
+    delete "DocumentLibrary" where upload_id is state.web_upload_id
+    create "DocumentLibrary" with map:
+      "id" is state.web_upload_id
+      "upload_id" is state.web_upload_id
+      "document_id" is state.web_upload_id
+      "source_name" is state.web_source_name
+      "source_type" is "WEB"
+      "status" is "failed"
+      "ingestion_stage" is "failed_indexing"
+      "progress_percent" is 100
+      "quality" is "fail"
+      "selected" is state.web_selected
+      "status_label" is "Failed • WEB"
+      "scope_label" is state.web_primary_tag + " • priority"
+      "weight" is state.web_weight
+      "tags" is state.web_tags
+      "primary_tag" is state.web_primary_tag
+      "quality_note" is state.web_error_note
+      "last_error" is "web_fetch_failed"
+    as web_failed_row
+
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Web source fetch failed. Verify the URL and try again."
+    as notice_web_fetch_failed
+
+    let summary_status is call flow "rag_engine.refresh_index_summary":
+      input:
+      output:
+        status
+    let project_status is call flow "rag_engine.refresh_project_stats":
+      input:
+      output:
+        status
+
+    return map:
+      "status" is "fetch_failed"
+
+  set state.web_chunk with:
+    chunk_id is state.web_upload_id + ":web:1"
+    upload_id is state.web_upload_id
+    document_id is state.web_upload_id
+    source_name is state.web_source_name
+    page_number is 1
+    chunk_index is 1
+    ingestion_phase is "web"
+    text is state.web_body
+    keywords is list: "web", "url", "source", "retrieval"
+
+  try:
+    let existing_chunks is state.index.chunks
+    set state.existing_chunks is existing_chunks
+  with catch err:
+    set state.existing_chunks is list:
+
+  set state.kept_chunks is list:
+  for each chunk in state.existing_chunks:
+    if chunk.upload_id is not state.web_upload_id:
+      set state.kept_chunks is list append state.kept_chunks with chunk
+
+  set state.kept_chunks is list append state.kept_chunks with state.web_chunk
+  set state.index with:
+    chunks is state.kept_chunks
+
+  delete "DocumentLibrary" where upload_id is state.web_upload_id
+  create "DocumentLibrary" with map:
+    "id" is state.web_upload_id
+    "upload_id" is state.web_upload_id
+    "document_id" is state.web_upload_id
+    "source_name" is state.web_source_name
+    "source_type" is "WEB"
+    "status" is "indexed"
+    "ingestion_stage" is "indexed"
+    "progress_percent" is 100
+    "quality" is "pass"
+    "selected" is state.web_selected
+    "status_label" is "Indexed • WEB"
+    "scope_label" is state.web_primary_tag + " • priority"
+    "weight" is state.web_weight
+    "tags" is state.web_tags
+    "primary_tag" is state.web_primary_tag
+    "quality_note" is "Web source indexed from URL."
+    "last_error" is ""
+  as web_indexed_row
+
+  find "ProjectBinding" where id is state.active_project_id + "::" + state.web_upload_id
+  let binding_count is list length of projectbinding_results
+  if binding_count is 0:
+    create "ProjectBinding" with map:
+      "id" is state.active_project_id + "::" + state.web_upload_id
+      "project_id" is state.active_project_id
+      "upload_id" is state.web_upload_id
+    as web_project_binding
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Web source indexed and ready for retrieval."
+  as notice_web_indexed
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
 flow "ingest_selected": requires true
   let init_status is call flow "rag_engine.initialize_defaults":
     input:
     output:
       status
 
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
   find "DocumentLibrary" where selected is true
-  let selected_docs is documentlibrary_results
-  let selected_count is list length of selected_docs
+  set state.selected_docs is list:
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
+  for each doc in documentlibrary_results:
+    set state.include_doc is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.include_doc is true
+    if state.include_doc is true:
+      set state.selected_docs is list append state.selected_docs with doc
+
+  let selected_count is list length of state.selected_docs
+  if selected_count is 0:
+    for each doc in documentlibrary_results:
+      set state.selected_docs is list append state.selected_docs with doc
+    let selected_count is list length of state.selected_docs
+
   if selected_count is 0:
     delete "Notice" where true
     create "Notice" with map:
       "id" is "current"
-      "message" is "indexing_without_selection: Select at least one source before indexing."
+      "message" is "indexing_without_selection: Select at least one uploaded source before indexing."
     as notice_no_selection
     let summary_status is call flow "rag_engine.refresh_index_summary":
       input:
@@ -39,7 +297,7 @@ flow "ingest_selected": requires true
   set state.failed_count is 0
   set state.indexed_count is 0
 
-  for each doc in selected_docs:
+  for each doc in state.selected_docs:
     set state.ingestion_stage is "parsing"
     set state.progress_percent is 25
 
@@ -139,35 +397,55 @@ flow "ingest_selected": requires true
     set state.incoming_chunks is list:
     set state.quality is "pass"
     set state.last_error is ""
-
-    try:
-      let out is call pipeline "ingestion":
-        input:
+    set state.skip_pipeline is false
+    if doc.source_type is "WEB":
+      set state.skip_pipeline is true
+    if state.skip_pipeline is true:
+      for each existing_chunk in state.existing_chunks:
+        if existing_chunk.upload_id is doc.upload_id:
+          set state.incoming_chunks is list append state.incoming_chunks with existing_chunk
+      let web_existing_chunk_count is list length of state.incoming_chunks
+      if web_existing_chunk_count is 0:
+        set state.web_chunk with:
+          chunk_id is doc.upload_id + ":web:1"
           upload_id is doc.upload_id
-        output:
-          report
-          ingestion
-          index
-
-      set state.index_payload is map get out key "index"
-      set state.report_payload is map get out key "report"
-
+          document_id is doc.document_id
+          source_name is doc.source_name
+          page_number is 1
+          chunk_index is 1
+          ingestion_phase is "web"
+          text is "Web source placeholder for " + doc.source_name + ". Re-add this URL to refresh the indexed page."
+          keywords is list: "web", "url", "source", "retrieval"
+        set state.incoming_chunks is list append state.incoming_chunks with state.web_chunk
+    else:
       try:
-        let quality_status is map get state.report_payload key "status"
-        if quality_status is not "":
-          set state.quality is quality_status
-      with catch err:
-        set state.quality is state.quality
+        let out is call pipeline "ingestion":
+          input:
+            upload_id is doc.upload_id
+          output:
+            report
+            ingestion
+            index
 
-      try:
-        let chunk_list is map get state.index_payload key "chunks"
-        set state.incoming_chunks is chunk_list
+        set state.index_payload is map get out key "index"
+        set state.report_payload is map get out key "report"
+
+        try:
+          let quality_status is map get state.report_payload key "status"
+          if quality_status is not "":
+            set state.quality is quality_status
+        with catch err:
+          set state.quality is state.quality
+
+        try:
+          let chunk_list is map get state.index_payload key "chunks"
+          set state.incoming_chunks is chunk_list
+        with catch err:
+          set state.incoming_chunks is list:
       with catch err:
+        set state.quality is "fail"
+        set state.last_error is "pipeline_error"
         set state.incoming_chunks is list:
-    with catch err:
-      set state.quality is "fail"
-      set state.last_error is "pipeline_error"
-      set state.incoming_chunks is list:
 
     let incoming_count is list length of state.incoming_chunks
     if incoming_count is 0:
@@ -318,13 +596,32 @@ flow "ingest_selected": requires true
     "status" is "ok"
 
 flow "bulk_reindex_selected": requires true
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
   find "DocumentLibrary" where selected is true
-  let selected_count is list length of documentlibrary_results
+  set state.selected_docs is list:
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
+  for each doc in documentlibrary_results:
+    set state.include_doc is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.include_doc is true
+    if state.include_doc is true:
+      set state.selected_docs is list append state.selected_docs with doc
+
+  let selected_count is list length of state.selected_docs
   if selected_count is 0:
     delete "Notice" where true
     create "Notice" with map:
       "id" is "current"
-      "message" is "indexing_without_selection: Select at least one source before re-index."
+      "message" is "indexing_without_selection: Select at least one source in the active project before re-index."
     as notice_bulk_reindex_empty
     let summary_status is call flow "rag_engine.refresh_index_summary":
       input:
@@ -332,7 +629,7 @@ flow "bulk_reindex_selected": requires true
         status
     return "no_selection"
 
-  for each doc in documentlibrary_results:
+  for each doc in state.selected_docs:
     delete "DocumentLibrary" where upload_id is doc.upload_id
     create "DocumentLibrary" with map:
       "id" is doc.id

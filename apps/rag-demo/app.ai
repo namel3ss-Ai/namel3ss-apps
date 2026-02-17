@@ -2,9 +2,17 @@ spec is "1.0"
 
 capabilities:
   uploads
-  ui.theming
+  http
+  `ui`.theming
   streaming
   ui_navigation
+  ui_state
+
+ui_state:
+  session:
+    preview_source is text
+    citation_highlight_color is text
+    active_project_id is text
 
 ui:
   preset is "clarity"
@@ -41,6 +49,57 @@ contract flow "rag_engine.seed_examples":
   output:
     status is text
 
+contract flow "rag_engine.ensure_projects":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.create_project":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.duplicate_project":
+  input:
+    project_id is text
+  output:
+    status is text
+
+contract flow "rag_engine.share_project":
+  input:
+    project_id is text
+  output:
+    status is text
+
+contract flow "rag_engine.archive_project":
+  input:
+    project_id is text
+  output:
+    status is text
+
+contract flow "rag_engine.rename_active_project":
+  input:
+    project_name is text
+  output:
+    status is text
+
+contract flow "rag_engine.delete_project":
+  input:
+    project_id is text
+  output:
+    status is text
+
+contract flow "rag_engine.set_active_project":
+  input:
+    project_id is text
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_project_stats":
+  input:
+  output:
+    status is text
+
 contract flow "rag_engine.refresh_index_summary":
   input:
   output:
@@ -56,8 +115,47 @@ contract flow "rag_engine.sync_library":
   output:
     status is text
 
+contract flow "rag_engine.ingest_web_source":
+  input:
+    web_url is text
+  output:
+    status is text
+
+contract flow "rag_engine.bulk_select_all":
+  input:
+  output:
+    status is text
+
 contract flow "rag_engine.ingest_selected":
   input:
+  output:
+    status is text
+
+contract flow "rag_engine.rename_document":
+  input:
+    upload_id is text
+    source_name is text
+  output:
+    status is text
+
+contract flow "rag_engine.add_document_to_project":
+  input:
+    upload_id is text
+    project_id is text
+  output:
+    status is text
+
+contract flow "rag_engine.remove_document_from_project":
+  input:
+    upload_id is text
+    project_id is text
+  output:
+    status is text
+
+contract flow "rag_engine.move_document_to_project":
+  input:
+    upload_id is text
+    project_id is text
   output:
     status is text
 
@@ -94,33 +192,161 @@ contract flow "rag_engine.finalize_answer_state":
   output:
     status is text
 
+contract flow "rag_engine.reset_chat":
+  input:
+  output:
+    status is text
+
 contract flow "rag_engine.ask_question":
   input:
     message is text
+    query_text is text
+    project_scope is text
+    project_scope_label is text
+    project_scope_conflict is boolean
+    document_scope is json
+    document_scope_mode is text
   output:
     answer_text is text
     mode is text
 
 page "Chat":
   layout:
+    sidebar_width is "wide"
+    panel_height is "full"
+    resizable_panels is true
     header:
-      title is "Assistant"
-      text is "Ask about your documents."
+      title is "RAG Assistant"
+      text is "Upload sources by project, index, and ask grounded questions."
+      row:
+        column:
+          button "Create new chat":
+            icon is chat_add_on
+            variant is "primary"
+            calls flow "rag_engine.reset_chat"
+        column:
+          button "View status":
+            icon is refresh
+            variant is "secondary"
+            calls flow "rag_engine.sync_library"
+
+    sidebar_left:
+      section "Projects":
+        text is "Keep document sets isolated by project."
+        button "Create project":
+          icon is folder_add
+          variant is "primary"
+          calls flow "rag_engine.create_project"
+
+        list is rag_engine.Project:
+          variant is "icon_plain"
+          item:
+            primary is name
+            secondary is status_label
+            icon is icon
+          actions:
+            action "Open":
+              calls flow "rag_engine.set_active_project"
+            action "Rename":
+              calls flow "rag_engine.rename_active_project"
+              interaction is rename_modal
+            action "Duplicate":
+              calls flow "rag_engine.duplicate_project"
+            action "Share":
+              calls flow "rag_engine.share_project"
+            action "Archive":
+              calls flow "rag_engine.archive_project"
+            action "Delete project":
+              calls flow "rag_engine.delete_project"
+              interaction is confirm_destructive
+
+      section "Chats":
+        text is "Start a fresh chat in the active project."
+        button "Create chat":
+          icon is chat_add_on
+          variant is "primary"
+          calls flow "rag_engine.reset_chat"
+
+        list is rag_engine.Notice:
+          variant is "single_line"
+          item:
+            primary is message
 
     main:
       chat:
-        style is "plain"
+        style is "bubbles"
         show_avatars is false
         group_messages is true
-        actions are ["view_sources"]
+        actions are ["copy", "expand"]
         attachments are false
         streaming is false
+        composer_placeholder is "Ask about your documents... use #project or @document"
+        composer_send_style is icon
         messages from is state.chat.messages
         composer calls flow "rag_engine.ask_question"
 
     drawer_right:
+      section "Knowledge controls":
+        text is "Upload to Library, then add files to project scope."
+        upload chat_files:
+          accept is "application/pdf,text/plain"
+          multiple is true
+          required is false
+          label is "Upload files"
+          preview is false
+
+        input text as web_url
+          send to flow "rag_engine.ingest_web_source"
+
+        button "View library":
+          icon is refresh
+          variant is "secondary"
+          calls flow "rag_engine.sync_library"
+
+      section "Project":
+        text is "Knowledge set for the active project."
+        list is rag_engine.ProjectKnowledgeItem:
+          variant is "two_line"
+          item:
+            primary is source_name
+            secondary is status_label
+            meta is scope_label
+          actions:
+            action "Rename":
+              calls flow "rag_engine.rename_document"
+              interaction is rename_modal
+            action "Move to project...":
+              calls flow "rag_engine.move_document_to_project"
+              interaction is project_picker
+            action "Remove from project":
+              calls flow "rag_engine.remove_document_from_project"
+            action "Delete file":
+              calls flow "rag_engine.remove_document"
+              interaction is confirm_destructive
+
+      section "Library":
+        text is "All uploaded files. Use @ to mention any file."
+        list is rag_engine.LibraryItem:
+          variant is "two_line"
+          item:
+            primary is source_name
+            secondary is status_label
+            meta is membership_label
+          actions:
+            action "Add to project":
+              calls flow "rag_engine.add_document_to_project"
+            action "Move to project...":
+              calls flow "rag_engine.move_document_to_project"
+              interaction is project_picker
+            action "Rename":
+              calls flow "rag_engine.rename_document"
+              interaction is rename_modal
+            action "Delete file":
+              calls flow "rag_engine.remove_document"
+              interaction is confirm_destructive
+
       section "Sources":
-        text is "Citations from the latest answer."
+        text is "Open evidence for the latest answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
@@ -128,11 +354,11 @@ page "Chat":
             secondary is page_label
             meta is snippet
           actions:
-            action "Open in source drawer":
+            action "Open":
               calls flow "rag_engine.open_citation"
-          empty_state: hidden
 
 page "Library":
+  debug_only: true
   layout:
     header:
       title is "Documents"
@@ -245,9 +471,11 @@ page "Library":
               calls flow "rag_engine.ingest_document"
             action "Remove source":
               calls flow "rag_engine.remove_document"
+              interaction is confirm_destructive
           empty_state: hidden
 
 page "Tuning":
+  debug_only: true
   layout:
     header:
       title is "Tuning"
@@ -335,6 +563,7 @@ page "Tuning":
               calls flow "rag_engine.filter_tags_policy"
 
 page "Explain":
+  debug_only: true
   layout:
     header:
       title is "Explain"
@@ -372,6 +601,7 @@ page "Explain":
             action "Open in source drawer":
               calls flow "rag_engine.open_citation"
           empty_state: hidden
+        source_preview from is state.ui.preview_source
 
       section "Diagnostics Mode":
         row:
