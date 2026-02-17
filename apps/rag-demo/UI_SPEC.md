@@ -40,7 +40,6 @@ The Chat page uses a three-pane workspace:
   - Upload: `question_files`
   - Chat composer bound to `rag_engine.ask_question`
 - `Source Evidence` list with actions: open in source drawer, rename, move, delete
-- `Runbook` checklist text
 
 ## Interaction Contracts
 ### Ingestion path
@@ -68,6 +67,7 @@ The Chat page uses a three-pane workspace:
 - Keep file actions available at row-level menus.
 - Keep ingestion status discoverable through notices and status labels.
 - Keep citation actions available in the same screen as chat.
+- Avoid persistent instructional paragraphs; rely on clear labels and direct actions.
 
 ## Non-goals
 - No hidden auto-routing outside declared flows.

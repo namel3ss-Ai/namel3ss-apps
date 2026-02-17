@@ -217,7 +217,6 @@ page "Chat":
     resizable_panels is true
     header:
       title is "Knowledge Operations"
-      text is "Deterministic project-scoped retrieval with explicit source routing and citation traceability."
       row:
         column:
           button "Create project":
@@ -239,13 +238,9 @@ page "Chat":
             icon is chat_add_on
             variant is "secondary"
             calls flow "rag_engine.reset_chat"
-        column:
-          text is "Active scope is project-bound by default. Use #project or @document for one-time routing."
 
     sidebar_left:
       section "Projects":
-        text is "Set active scope here. Uploads, indexing, and answers in this page follow the selected project."
-
         list is rag_engine.Project:
           variant is "icon_plain"
           item:
@@ -270,7 +265,6 @@ page "Chat":
               interaction is confirm_destructive
 
       section "System Notices":
-        text is "Runtime notices for ingestion, indexing, and retrieval readiness."
         list is rag_engine.Notice:
           variant is "single_line"
           item:
@@ -284,7 +278,6 @@ page "Chat":
 
     main:
       section "Project Intake":
-        text is "Upload PDF or text files into the active project, then run indexing."
         upload project_files:
           accept is "application/pdf,text/plain"
           multiple is true
@@ -306,11 +299,7 @@ page "Chat":
         input text as web_url
           send to flow "rag_engine.ingest_web_source"
 
-        text is "Optional: ingest a public URL into the same active project."
-
       section "Library Routing":
-        text is "Central source library. Use row actions to assign, move, rename, or delete."
-
         list is rag_engine.LibraryItem:
           variant is "two_line"
           item:
@@ -332,7 +321,6 @@ page "Chat":
           empty_state: hidden
 
       section "Project Scope":
-        text is "These files are currently in active project scope and used during retrieval."
         list is rag_engine.ProjectKnowledgeItem:
           variant is "two_line"
           item:
@@ -355,7 +343,6 @@ page "Chat":
 
     drawer_right:
       section "Assistant":
-        text is "Ask questions against the active project. Attach files for one-time prompt context."
         upload question_files:
           accept is "application/pdf,text/plain"
           multiple is true
@@ -375,7 +362,6 @@ page "Chat":
           composer calls flow "rag_engine.ask_question"
 
       section "Source Evidence":
-        text is "Citations extracted from the latest assistant answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
@@ -395,11 +381,6 @@ page "Chat":
             action "Delete file":
               calls flow "rag_engine.remove_document"
               interaction is confirm_destructive
-
-      section "Runbook":
-        text is "1) Upload to active project."
-        text is "2) Create project index."
-        text is "3) Ask in assistant and inspect cited evidence."
 
 page "Library":
   debug_only: true
