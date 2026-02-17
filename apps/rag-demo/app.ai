@@ -275,6 +275,7 @@ page "Chat":
           streaming is false
           composer_placeholder is "Ask a grounded question about this project..."
           composer_send_style is icon
+          composer_attach_upload is "question_files"
           messages from is state.chat.messages
           composer calls flow "rag_engine.ask_question"
 

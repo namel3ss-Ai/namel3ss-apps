@@ -27,6 +27,7 @@ The Chat page uses a three-pane workspace:
 - `Assistant`
   - Action: `Create chat`
   - Chat composer bound to `rag_engine.ask_question`
+  - Composer attachment trigger: `+` icon mapped via `composer_attach_upload` to `question_files`
 - `Project Intake`
   - Upload: `project_files`
   - Actions: `Create project index`, `View file status`

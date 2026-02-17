@@ -5,8 +5,16 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-N3_BIN = os.environ.get("N3_BIN", str(ROOT_DIR / ".venv" / "bin" / "n3"))
-PY_BIN = os.environ.get("PY_BIN", str(ROOT_DIR / ".venv" / "bin" / "python"))
+
+
+def _default_venv_executable(name: str) -> str:
+    if os.name == "nt":
+        return str(ROOT_DIR / ".venv" / "Scripts" / f"{name}.exe")
+    return str(ROOT_DIR / ".venv" / "bin" / name)
+
+
+N3_BIN = os.environ.get("N3_BIN", _default_venv_executable("n3"))
+PY_BIN = os.environ.get("PY_BIN", _default_venv_executable("python"))
 
 
 def ensure_provider_manifests() -> None:
