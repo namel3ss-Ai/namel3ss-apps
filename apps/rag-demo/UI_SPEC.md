@@ -22,26 +22,25 @@ The Chat page uses a three-pane workspace:
 ### Left Pane
 - `Projects` list
 - Project actions: open, rename, duplicate, share, archive, delete
-- `Workspace Activity` list (ingestion and routing notices)
-- `View workspace status`
+- `System Notices` list (ingestion and routing notices)
 - `Reset chat`
 
 ### Center Pane
-- `Upload Knowledge`
+- `Project Intake`
   - Upload: `project_files`
   - Actions: `Create project index`, `View file status`
   - Web source input routed to `rag_engine.ingest_web_source`
-- `Knowledge Library`
+- `Library Routing`
   - Library list with actions: add-to-project, move, rename, delete
-- `Active Project Knowledge`
+- `Project Scope`
   - Project-scoped list with actions: rename, move, remove-from-project, delete
 
 ### Right Pane
-- `AI Assistant`
+- `Assistant`
   - Upload: `question_files`
   - Chat composer bound to `rag_engine.ask_question`
-- `Answer Sources` list with actions: open in source drawer, rename, move, delete
-- `Workflow` checklist text
+- `Source Evidence` list with actions: open in source drawer, rename, move, delete
+- `Runbook` checklist text
 
 ## Interaction Contracts
 ### Ingestion path
@@ -61,7 +60,7 @@ The Chat page uses a three-pane workspace:
 
 ## Naming and Copy Rules
 - Action labels are verb-first (`Create`, `View`, `Reset`, `Open`, `Delete`).
-- Section titles are noun-based and operational (`Upload Knowledge`, `Knowledge Library`).
+- Section titles are noun-based and operational (`Project Intake`, `Library Routing`).
 - Avoid ambiguous labels such as `Add New`.
 
 ## UX Quality Guardrails

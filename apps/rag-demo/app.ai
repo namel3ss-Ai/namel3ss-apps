@@ -21,15 +21,15 @@ ui:
   density is "comfortable"
   motion is "none"
   shape is "soft"
-  surface is "raised"
-  primary color is "#1D4ED8"
-  secondary color is "#CBD5E1"
-  background color is "#F8FAFC"
-  foreground color is "#0F172A"
-  font family is "Manrope, Segoe UI, sans-serif"
+  surface is "outlined"
+  primary color is "#0B57D0"
+  secondary color is "#C7D2E0"
+  background color is "#F7F9FC"
+  foreground color is "#111827"
+  font family is "IBM Plex Sans, Segoe UI, sans-serif"
   spacing scale is 1.0
-  border radius is 10
-  shadow level is 1
+  border radius is 8
+  shadow level is 0
 
 policy
   allow ingestion.run
@@ -216,8 +216,8 @@ page "Chat":
     panel_height is "full"
     resizable_panels is true
     header:
-      title is "RAG Workspace"
-      text is "Upload into the active project, index knowledge, then ask grounded questions with citations."
+      title is "Knowledge Operations"
+      text is "Deterministic project-scoped retrieval with explicit source routing and citation traceability."
       row:
         column:
           button "Create project":
@@ -240,11 +240,11 @@ page "Chat":
             variant is "secondary"
             calls flow "rag_engine.reset_chat"
         column:
-          text is "Tip: use #project and @document in your prompt for one-time routing."
+          text is "Active scope is project-bound by default. Use #project or @document for one-time routing."
 
     sidebar_left:
       section "Projects":
-        text is "Switch scope here. Uploads and retrieval in this page follow the active project."
+        text is "Set active scope here. Uploads, indexing, and answers in this page follow the selected project."
 
         list is rag_engine.Project:
           variant is "icon_plain"
@@ -269,23 +269,13 @@ page "Chat":
               calls flow "rag_engine.delete_project"
               interaction is confirm_destructive
 
-        button "Create project":
-          icon is folder_add
-          variant is "secondary"
-          calls flow "rag_engine.create_project"
-
-      section "Workspace Activity":
-        text is "Operational notices for ingestion, indexing, and answer readiness."
+      section "System Notices":
+        text is "Runtime notices for ingestion, indexing, and retrieval readiness."
         list is rag_engine.Notice:
           variant is "single_line"
           item:
             primary is message
           empty_state: hidden
-
-        button "View workspace status":
-          icon is refresh
-          variant is "secondary"
-          calls flow "rag_engine.sync_library"
 
         button "Reset chat":
           icon is chat_add_on
@@ -293,13 +283,13 @@ page "Chat":
           calls flow "rag_engine.reset_chat"
 
     main:
-      section "Upload Knowledge":
-        text is "Upload PDFs or text files directly into the active project."
+      section "Project Intake":
+        text is "Upload PDF or text files into the active project, then run indexing."
         upload project_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Upload files to active project"
+          label is "Upload files"
           preview is false
 
         row:
@@ -316,10 +306,10 @@ page "Chat":
         input text as web_url
           send to flow "rag_engine.ingest_web_source"
 
-        text is "Optional: ingest a public URL into the same project scope."
+        text is "Optional: ingest a public URL into the same active project."
 
-      section "Knowledge Library":
-        text is "The library stores all sources. Use row actions to assign, move, rename, or delete."
+      section "Library Routing":
+        text is "Central source library. Use row actions to assign, move, rename, or delete."
 
         list is rag_engine.LibraryItem:
           variant is "two_line"
@@ -341,8 +331,8 @@ page "Chat":
               interaction is confirm_destructive
           empty_state: hidden
 
-      section "Active Project Knowledge":
-        text is "These files are currently scoped to the active project and used during retrieval."
+      section "Project Scope":
+        text is "These files are currently in active project scope and used during retrieval."
         list is rag_engine.ProjectKnowledgeItem:
           variant is "two_line"
           item:
@@ -364,13 +354,13 @@ page "Chat":
               interaction is confirm_destructive
 
     drawer_right:
-      section "AI Assistant":
+      section "Assistant":
         text is "Ask questions against the active project. Attach files for one-time prompt context."
         upload question_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Attach files to this question"
+          label is "Attach files for this question"
           preview is false
         chat:
           style is "bubbles"
@@ -379,13 +369,13 @@ page "Chat":
           actions are ["copy", "expand"]
           attachments are true
           streaming is false
-          composer_placeholder is "Ask about this project's indexed documents..."
+          composer_placeholder is "Ask a grounded question about this project..."
           composer_send_style is icon
           messages from is state.chat.messages
           composer calls flow "rag_engine.ask_question"
 
-      section "Answer Sources":
-        text is "Evidence cards extracted from the latest assistant answer."
+      section "Source Evidence":
+        text is "Citations extracted from the latest assistant answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
@@ -406,10 +396,10 @@ page "Chat":
               calls flow "rag_engine.remove_document"
               interaction is confirm_destructive
 
-      section "Workflow":
+      section "Runbook":
         text is "1) Upload to active project."
         text is "2) Create project index."
-        text is "3) Ask in assistant and inspect sources."
+        text is "3) Ask in assistant and inspect cited evidence."
 
 page "Library":
   debug_only: true
