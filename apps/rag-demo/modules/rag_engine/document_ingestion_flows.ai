@@ -397,6 +397,9 @@ flow "ingest_selected": requires true
     set state.incoming_chunks is list:
     set state.quality is "pass"
     set state.last_error is ""
+    set state.ocr_retry_used is false
+    set state.preview_recovery_used is false
+    set state.preview_text is ""
     set state.skip_pipeline is false
     if doc.source_type is "WEB":
       set state.skip_pipeline is true
@@ -442,6 +445,39 @@ flow "ingest_selected": requires true
           set state.incoming_chunks is chunk_list
         with catch err:
           set state.incoming_chunks is list:
+
+        set state.retry_ocr is false
+        if doc.source_type is "PDF":
+          if state.quality is "block":
+            set state.retry_ocr is true
+        if state.retry_ocr is true:
+          try:
+            let ocr_out is call pipeline "ingestion":
+              input:
+                upload_id is doc.upload_id
+                mode is "ocr"
+              output:
+                report
+                ingestion
+                index
+            set state.ocr_retry_used is true
+            set state.index_payload is map get ocr_out key "index"
+            set state.report_payload is map get ocr_out key "report"
+
+            try:
+              let ocr_quality_status is map get state.report_payload key "status"
+              if ocr_quality_status is not "":
+                set state.quality is ocr_quality_status
+            with catch err:
+              set state.quality is state.quality
+
+            try:
+              let ocr_chunk_list is map get state.index_payload key "chunks"
+              set state.incoming_chunks is ocr_chunk_list
+            with catch err:
+              set state.incoming_chunks is list:
+          with catch err:
+            set state.last_error is "pipeline_ocr_error"
       with catch err:
         set state.quality is "fail"
         set state.last_error is "pipeline_error"
@@ -449,19 +485,41 @@ flow "ingest_selected": requires true
 
     let incoming_count is list length of state.incoming_chunks
     if incoming_count is 0:
-      set state.fallback_chunk with:
-        chunk_id is doc.upload_id + ":fallback:1"
-        upload_id is doc.upload_id
-        document_id is doc.document_id
-        source_name is doc.source_name
-        page_number is 1
-        chunk_index is 1
-        ingestion_phase is "fallback"
-        text is "Fallback chunk for " + doc.source_name + ". Upload searchable/OCR text for full grounding."
-        keywords is list: "fallback", "document", "source", "grounding"
-      set state.incoming_chunks is list append state.incoming_chunks with state.fallback_chunk
-      if state.quality is "pass":
+      set state.preview_text is ""
+      try:
+        let report_preview is map get state.report_payload key "preview"
+        if report_preview is not "":
+          set state.preview_text is report_preview
+      with catch err:
+        set state.preview_text is state.preview_text
+      if state.preview_text is not "":
+        set state.preview_recovery_chunk with:
+          chunk_id is doc.upload_id + ":preview:1"
+          upload_id is doc.upload_id
+          document_id is doc.document_id
+          source_name is doc.source_name
+          page_number is 1
+          chunk_index is 1
+          ingestion_phase is "preview_recovery"
+          text is state.preview_text
+          keywords is list: "preview", "recovery", "document", "source"
+        set state.incoming_chunks is list append state.incoming_chunks with state.preview_recovery_chunk
+        set state.preview_recovery_used is true
         set state.quality is "warn"
+      else:
+        set state.fallback_chunk with:
+          chunk_id is doc.upload_id + ":fallback:1"
+          upload_id is doc.upload_id
+          document_id is doc.document_id
+          source_name is doc.source_name
+          page_number is 1
+          chunk_index is 1
+          ingestion_phase is "fallback"
+          text is "Fallback chunk for " + doc.source_name + ". Upload searchable/OCR text for full grounding."
+          keywords is list: "fallback", "document", "source", "grounding"
+        set state.incoming_chunks is list append state.incoming_chunks with state.fallback_chunk
+        if state.quality is "pass":
+          set state.quality is "warn"
 
     set state.normalized_chunks is list:
     set state.chunk_counter is 0
@@ -547,8 +605,12 @@ flow "ingest_selected": requires true
       set state.failed_count is state.failed_count + 1
     else:
       if state.quality is "warn":
-        set state.final_label is "Indexed (Fallback) • " + doc.source_type
-        set state.final_note is "Fallback chunk indexed. Upload searchable/OCR text for better grounding."
+        if state.preview_recovery_used is true:
+          set state.final_label is "Indexed (Preview Recovery) - " + doc.source_type
+          set state.final_note is "Indexed from low-confidence preview text after quality gate block. Re-run with OCR for better grounding."
+        else:
+          set state.final_label is "Indexed (Fallback) - " + doc.source_type
+          set state.final_note is "Fallback chunk indexed. Upload searchable/OCR text for better grounding."
       set state.indexed_count is state.indexed_count + 1
 
     delete "DocumentLibrary" where upload_id is doc.upload_id
@@ -757,3 +819,4 @@ flow "retry_document": requires true
       status
 
   return "ok"
+
