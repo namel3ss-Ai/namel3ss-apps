@@ -21,7 +21,7 @@ ui:
   density is "comfortable"
   motion is "none"
   shape is "soft"
-  surface is "outlined"
+  surface is "flat"
   primary color is "#0B57D0"
   secondary color is "#C7D2E0"
   background color is "#F7F9FC"
