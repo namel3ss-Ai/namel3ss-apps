@@ -45,7 +45,10 @@ flow "sync_library": requires true
       status
 
   set state.upload_entries is list:
+  set state.project_origin_upload_ids is list:
+  set state.question_origin_upload_ids is list:
   set state.new_upload_count is 0
+  set state.auto_assigned_count is 0
 
   try:
     let raw_uploads is state.uploads.documents
@@ -65,11 +68,175 @@ flow "sync_library": requires true
     try:
       for each upload_entry in raw_chat_uploads:
         set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
     with catch err:
       let upload_keys is map keys raw_chat_uploads
       for each upload_key in upload_keys:
         let upload_entry is map get raw_chat_uploads key upload_key
         set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
+  with catch err:
+    set state.upload_entries is state.upload_entries
+
+  try:
+    let raw_project_uploads is state.uploads.project_files
+    try:
+      for each upload_entry in raw_project_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.project_origin_upload_ids is list append state.project_origin_upload_ids with state.origin_upload_id
+    with catch err:
+      let upload_keys is map keys raw_project_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_project_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.project_origin_upload_ids is list append state.project_origin_upload_ids with state.origin_upload_id
+  with catch err:
+    set state.upload_entries is state.upload_entries
+
+  try:
+    let raw_question_uploads is state.uploads.question_files
+    try:
+      for each upload_entry in raw_question_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
+    with catch err:
+      let upload_keys is map keys raw_question_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_question_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
   with catch err:
     set state.upload_entries is state.upload_entries
 
@@ -203,6 +370,14 @@ flow "sync_library": requires true
     if state.upload_id is "":
       set state.upload_id is "unknown-upload"
 
+    set state.upload_origin is "library"
+    for each project_origin_upload_id in state.project_origin_upload_ids:
+      if project_origin_upload_id is state.upload_id:
+        set state.upload_origin is "project"
+    for each question_origin_upload_id in state.question_origin_upload_ids:
+      if question_origin_upload_id is state.upload_id:
+        set state.upload_origin is "question"
+
     find "DocumentLibrary" where upload_id is state.upload_id
     let existing_count is list length of documentlibrary_results
     if existing_count is 0:
@@ -249,6 +424,18 @@ flow "sync_library": requires true
       as library_row
       set state.new_upload_count is state.new_upload_count + 1
 
+    if state.upload_origin is "project" or state.upload_origin is "question":
+      if state.active_project_id is not "":
+        find "ProjectBinding" where id is state.active_project_id + "::" + state.upload_id
+        let auto_binding_count is list length of projectbinding_results
+        if auto_binding_count is 0:
+          create "ProjectBinding" with map:
+            "id" is state.active_project_id + "::" + state.upload_id
+            "project_id" is state.active_project_id
+            "upload_id" is state.upload_id
+          as auto_binding
+          set state.auto_assigned_count is state.auto_assigned_count + 1
+
   find "DocumentLibrary" where true
   set state.known_upload_ids is list:
   for each doc in documentlibrary_results:
@@ -272,6 +459,13 @@ flow "sync_library": requires true
   delete "ProjectKnowledgeItem" where true
   delete "LibraryItem" where true
 
+  find "Project" where id is state.active_project_id
+  set state.active_project_name is state.active_project_id
+  let active_project_count is list length of project_results
+  if active_project_count is greater than 0:
+    let active_project is list get project_results at 0
+    set state.active_project_name is active_project.name
+
   find "ProjectBinding" where project_id is state.active_project_id
   set state.active_project_upload_ids is list:
   for each binding in projectbinding_results:
@@ -284,9 +478,9 @@ flow "sync_library": requires true
       if active_upload_id is doc.upload_id:
         set state.in_active_project is true
 
-    set state.membership_label is "Library only"
+    set state.membership_label is "Upload -> Library (not in active project)"
     if state.in_active_project is true:
-      set state.membership_label is "In this project"
+      set state.membership_label is "Upload -> Library -> " + state.active_project_name
 
     create "LibraryItem" with map:
       "id" is doc.id
@@ -310,7 +504,7 @@ flow "sync_library": requires true
         "source_type" is doc.source_type
         "status" is doc.status
         "status_label" is doc.status_label
-        "scope_label" is doc.scope_label
+        "scope_label" is "Upload -> Library -> " + state.active_project_name + " | " + doc.scope_label
       as project_item
 
   let project_status is call flow "rag_engine.refresh_project_stats":
@@ -320,15 +514,27 @@ flow "sync_library": requires true
 
   delete "Notice" where true
   if state.new_upload_count is greater than 0:
-    create "Notice" with map:
-      "id" is "current"
-      "message" is "Uploads synced and indexed in the library. Add files to a project or mention with @."
-    as notice_synced_indexed
+    if state.auto_assigned_count is greater than 0:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Uploads synced and indexed. Project and question uploads were assigned to " + state.active_project_name + "."
+      as notice_synced_indexed_assigned
+    else:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Uploads synced to Library and indexed. Next: assign needed files to " + state.active_project_name + " and ask in chat."
+      as notice_synced_indexed
   else:
-    create "Notice" with map:
-      "id" is "current"
-      "message" is "Library synced."
-    as notice_synced
+    if state.auto_assigned_count is greater than 0:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Knowledge synced. New uploads were assigned to " + state.active_project_name + " automatically."
+      as notice_synced_assigned
+    else:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Library synced. File path labels show routing from upload to project."
+      as notice_synced
 
   let summary_status is call flow "rag_engine.refresh_index_summary":
     input:
@@ -475,10 +681,42 @@ flow "rename_document": requires true
     set state.rename_upload_id is state.rename_upload_id
 
   try:
+    let row_source_id is input.row.source_id
+    if state.rename_upload_id is "":
+      if row_source_id is not "":
+        set state.rename_upload_id is row_source_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let row_document_id is input.row.document_id
+    if state.rename_upload_id is "":
+      if row_document_id is not "":
+        set state.rename_upload_id is row_document_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
     let direct_upload_id is input.upload_id
     if state.rename_upload_id is "":
       if direct_upload_id is not "":
         set state.rename_upload_id is direct_upload_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let direct_source_id is input.source_id
+    if state.rename_upload_id is "":
+      if direct_source_id is not "":
+        set state.rename_upload_id is direct_source_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let direct_document_id is input.document_id
+    if state.rename_upload_id is "":
+      if direct_document_id is not "":
+        set state.rename_upload_id is direct_document_id
   with catch err:
     set state.rename_upload_id is state.rename_upload_id
 
@@ -620,6 +858,7 @@ flow "add_document_to_project": requires true
   let project_count is list length of project_results
   if project_count is 0:
     return "project_not_found"
+  let target_project is list get project_results at 0
 
   find "DocumentLibrary" where upload_id is state.target_upload_id
   let doc_count is list length of documentlibrary_results
@@ -643,7 +882,7 @@ flow "add_document_to_project": requires true
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "File added to active project."
+    "message" is "File path updated: Upload -> Library -> " + target_project.name + ". Next: run Create Index if content changed."
   as notice_added_to_project
 
   return "ok"
@@ -655,12 +894,39 @@ flow "move_document_to_project": requires true
       status
 
   set state.move_upload_id is ""
+  set state.move_document_id is ""
+  set state.move_source_name is ""
   try:
     let row_upload_id is input.row.upload_id
     if row_upload_id is not "":
       set state.move_upload_id is row_upload_id
   with catch err:
     set state.move_upload_id is state.move_upload_id
+
+  try:
+    let row_source_id is input.row.source_id
+    if state.move_upload_id is "":
+      if row_source_id is not "":
+        set state.move_upload_id is row_source_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let row_document_id is input.row.document_id
+    if row_document_id is not "":
+      set state.move_document_id is row_document_id
+    if state.move_upload_id is "":
+      if row_document_id is not "":
+        set state.move_upload_id is row_document_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let row_source_name is input.row.source_name
+    if row_source_name is not "":
+      set state.move_source_name is row_source_name
+  with catch err:
+    set state.move_source_name is state.move_source_name
 
   try:
     let direct_upload_id is input.upload_id
@@ -670,6 +936,31 @@ flow "move_document_to_project": requires true
   with catch err:
     set state.move_upload_id is state.move_upload_id
 
+  try:
+    let direct_source_id is input.source_id
+    if state.move_upload_id is "":
+      if direct_source_id is not "":
+        set state.move_upload_id is direct_source_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let direct_document_id is input.document_id
+    if direct_document_id is not "":
+      set state.move_document_id is direct_document_id
+    if state.move_upload_id is "":
+      if direct_document_id is not "":
+        set state.move_upload_id is direct_document_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let direct_source_name is input.source_name
+    if direct_source_name is not "":
+      set state.move_source_name is direct_source_name
+  with catch err:
+    set state.move_source_name is state.move_source_name
+
   if state.move_upload_id is "":
     return "missing_document"
 
@@ -678,6 +969,46 @@ flow "move_document_to_project": requires true
     let requested_project_id is input.project_id
     if requested_project_id is not "":
       set state.move_target_project_id is requested_project_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let requested_target_project_id is input.target_project_id
+    if state.move_target_project_id is "":
+      if requested_target_project_id is not "":
+        set state.move_target_project_id is requested_target_project_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let requested_project is input.project
+    if state.move_target_project_id is "":
+      if requested_project is not "":
+        set state.move_target_project_id is requested_project
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let direct_id is input.id
+    if state.move_target_project_id is "":
+      if direct_id is not "":
+        set state.move_target_project_id is direct_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let row_project_id is input.row.project_id
+    if state.move_target_project_id is "":
+      if row_project_id is not "":
+        set state.move_target_project_id is row_project_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let row_id is input.row.id
+    if state.move_target_project_id is "":
+      if row_id is not "":
+        set state.move_target_project_id is row_id
   with catch err:
     set state.move_target_project_id is state.move_target_project_id
 
@@ -694,6 +1025,25 @@ flow "move_document_to_project": requires true
 
   find "DocumentLibrary" where upload_id is state.move_upload_id
   let move_doc_count is list length of documentlibrary_results
+  if move_doc_count is 0:
+    if state.move_document_id is not "":
+      find "DocumentLibrary" where document_id is state.move_document_id
+      let move_doc_by_document_count is list length of documentlibrary_results
+      if move_doc_by_document_count is greater than 0:
+        let move_doc_by_document is list get documentlibrary_results at 0
+        set state.move_upload_id is move_doc_by_document.upload_id
+        set move_doc_count is move_doc_by_document_count
+  if move_doc_count is 0:
+    if state.move_source_name is not "":
+      find "DocumentLibrary" where source_name is state.move_source_name
+      let move_doc_by_name_count is list length of documentlibrary_results
+      if move_doc_by_name_count is greater than 0:
+        let move_doc_by_name is list get documentlibrary_results at 0
+        set state.move_upload_id is move_doc_by_name.upload_id
+        set move_doc_count is move_doc_by_name_count
+  if move_doc_count is greater than 0:
+    find "DocumentLibrary" where upload_id is state.move_upload_id
+    set move_doc_count is list length of documentlibrary_results
   if move_doc_count is 0:
     return "not_found"
 
@@ -728,7 +1078,7 @@ flow "move_document_to_project": requires true
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "Moved file to " + state.move_target_label + "."
+    "message" is "File moved. New path: Upload -> Library -> " + state.move_target_label + "."
   as notice_moved_to_project
 
   return "ok"
@@ -769,6 +1119,13 @@ flow "remove_document_from_project": requires true
   if state.target_project_id is "":
     return "missing_project"
 
+  find "Project" where id is state.target_project_id
+  set state.target_project_name is state.target_project_id
+  let target_project_count is list length of project_results
+  if target_project_count is greater than 0:
+    let target_project is list get project_results at 0
+    set state.target_project_name is target_project.name
+
   delete "ProjectBinding" where id is state.target_project_id + "::" + state.target_upload_id
 
   let sync_status is call flow "rag_engine.sync_library":
@@ -779,7 +1136,7 @@ flow "remove_document_from_project": requires true
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "File removed from active project."
+    "message" is "File removed from " + state.target_project_name + ". Path is now Upload -> Library."
   as notice_removed_from_project
 
   return "ok"
@@ -949,9 +1306,55 @@ flow "bulk_remove_selected": requires true
   return "ok"
 
 flow "remove_document": requires true
+  set state.removed_upload_id is ""
   try:
-    let removed_upload_id is input.row.upload_id
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.removed_upload_id is row_upload_id
   with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let row_source_id is input.row.source_id
+    if state.removed_upload_id is "":
+      if row_source_id is not "":
+        set state.removed_upload_id is row_source_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let row_document_id is input.row.document_id
+    if state.removed_upload_id is "":
+      if row_document_id is not "":
+        set state.removed_upload_id is row_document_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.removed_upload_id is "":
+      if direct_upload_id is not "":
+        set state.removed_upload_id is direct_upload_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let direct_source_id is input.source_id
+    if state.removed_upload_id is "":
+      if direct_source_id is not "":
+        set state.removed_upload_id is direct_source_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let direct_document_id is input.document_id
+    if state.removed_upload_id is "":
+      if direct_document_id is not "":
+        set state.removed_upload_id is direct_document_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  if state.removed_upload_id is "":
     return "missing_document"
 
   find "DocumentLibrary" where true
@@ -959,16 +1362,16 @@ flow "remove_document": requires true
   delete "DocumentLibrary" where true
 
   for each doc in docs:
-    if doc.upload_id is not removed_upload_id:
+    if doc.upload_id is not state.removed_upload_id:
       create "DocumentLibrary" with doc as kept_doc
 
-  delete "ProjectBinding" where upload_id is removed_upload_id
+  delete "ProjectBinding" where upload_id is state.removed_upload_id
 
   try:
     let chunks is state.index.chunks
     set state.kept_chunks is list:
     for each chunk in chunks:
-      if chunk.upload_id is not removed_upload_id:
+      if chunk.upload_id is not state.removed_upload_id:
         set state.kept_chunks is list append state.kept_chunks with chunk
     set state.index with:
       chunks is state.kept_chunks
@@ -1001,7 +1404,7 @@ flow "remove_document": requires true
     "message" is "File deleted from library."
   as notice_removed_final
 
-  return removed_upload_id
+  return state.removed_upload_id
 
 flow "increase_document_weight": requires true
   try:

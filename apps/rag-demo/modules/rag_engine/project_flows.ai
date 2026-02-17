@@ -196,7 +196,7 @@ flow "create_project": requires true
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "Created and switched to " + state.new_project_name + "."
+    "message" is "Created and switched to " + state.new_project_name + ". Files stay in Library until you add them to this project."
   as notice_project_created
 
   return map:
@@ -510,7 +510,7 @@ flow "set_active_project": requires true
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "Active project set to " + target_project.name + "."
+    "message" is "Active project set to " + target_project.name + ". Add files from Library to route them here."
   as notice_active_project
 
   return map:

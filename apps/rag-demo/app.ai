@@ -217,15 +217,15 @@ page "Chat":
     resizable_panels is true
     header:
       title is "RAG Assistant"
-      text is "Upload sources by project, index, and ask grounded questions."
+      text is "Knowledge path: Project upload or question attachment -> Library -> Active project -> Index -> Ask with citations."
       row:
         column:
-          button "Create new chat":
+          button "Create chat":
             icon is chat_add_on
             variant is "primary"
             calls flow "rag_engine.reset_chat"
         column:
-          button "View status":
+          button "View knowledge status":
             icon is refresh
             variant is "secondary"
             calls flow "rag_engine.sync_library"
@@ -273,27 +273,37 @@ page "Chat":
             primary is message
 
     main:
-      chat:
-        style is "bubbles"
-        show_avatars is false
-        group_messages is true
-        actions are ["copy", "expand"]
-        attachments are false
-        streaming is false
-        composer_placeholder is "Ask about your documents... use #project or @document"
-        composer_send_style is icon
-        messages from is state.chat.messages
-        composer calls flow "rag_engine.ask_question"
-
-    drawer_right:
-      section "Knowledge controls":
-        text is "Upload to Library, then add files to project scope."
-        upload chat_files:
+      section "Ask":
+        text is "Attach files for this question or upload directly into the active project."
+        upload question_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Upload files"
+          label is "Attach files for this question"
           preview is false
+        text is "Question attachments are auto-synced and routed to the active project when you send."
+        chat:
+          style is "bubbles"
+          show_avatars is false
+          group_messages is true
+          actions are ["copy", "expand"]
+          attachments are true
+          streaming is false
+          composer_placeholder is "Ask a question about project files... use #project or @document"
+          composer_send_style is icon
+          messages from is state.chat.messages
+          composer calls flow "rag_engine.ask_question"
+
+    drawer_right:
+      section "File path":
+        text is "1) Upload in Active Project Files or Attach files for this question."
+        text is "2) Sync the knowledge workspace."
+        text is "3) Review Library routing and adjust with the ... menu."
+        text is "4) Run Create Index to refresh chunks."
+        text is "5) Ask in chat and open citations."
+
+      section "Knowledge Workspace":
+        text is "Library contains all uploaded files. Assignment to projects is explicit and traceable."
 
         input text as web_url
           send to flow "rag_engine.ingest_web_source"
@@ -303,8 +313,36 @@ page "Chat":
           variant is "secondary"
           calls flow "rag_engine.sync_library"
 
-      section "Project":
-        text is "Knowledge set for the active project."
+        text is "Library files: use the ... menu on each row for rename, move, assignment, or delete."
+        list is rag_engine.LibraryItem:
+          variant is "two_line"
+          item:
+            primary is source_name
+            secondary is status_label
+            meta is membership_label
+          actions:
+            action "Assign to active project":
+              calls flow "rag_engine.add_document_to_project"
+            action "Move to project...":
+              calls flow "rag_engine.move_document_to_project"
+              interaction is project_picker
+            action "Rename":
+              calls flow "rag_engine.rename_document"
+              interaction is rename_modal
+            action "Delete file":
+              calls flow "rag_engine.remove_document"
+              interaction is confirm_destructive
+          empty_state: hidden
+
+      section "Active Project Files":
+        text is "Files uploaded here are automatically assigned to the active project."
+        upload project_files:
+          accept is "application/pdf,text/plain"
+          multiple is true
+          required is false
+          label is "Upload to active project"
+          preview is false
+        text is "Use the ... menu on each row for rename, move, remove, or delete."
         list is rag_engine.ProjectKnowledgeItem:
           variant is "two_line"
           item:
@@ -324,27 +362,6 @@ page "Chat":
               calls flow "rag_engine.remove_document"
               interaction is confirm_destructive
 
-      section "Library":
-        text is "All uploaded files. Use @ to mention any file."
-        list is rag_engine.LibraryItem:
-          variant is "two_line"
-          item:
-            primary is source_name
-            secondary is status_label
-            meta is membership_label
-          actions:
-            action "Add to project":
-              calls flow "rag_engine.add_document_to_project"
-            action "Move to project...":
-              calls flow "rag_engine.move_document_to_project"
-              interaction is project_picker
-            action "Rename":
-              calls flow "rag_engine.rename_document"
-              interaction is rename_modal
-            action "Delete file":
-              calls flow "rag_engine.remove_document"
-              interaction is confirm_destructive
-
       section "Sources":
         text is "Open evidence for the latest answer."
         list is rag_engine.CitationCard:
@@ -356,6 +373,15 @@ page "Chat":
           actions:
             action "Open":
               calls flow "rag_engine.open_citation"
+            action "Rename":
+              calls flow "rag_engine.rename_document"
+              interaction is rename_modal
+            action "Move to project...":
+              calls flow "rag_engine.move_document_to_project"
+              interaction is project_picker
+            action "Delete file":
+              calls flow "rag_engine.remove_document"
+              interaction is confirm_destructive
 
 page "Library":
   debug_only: true
@@ -600,6 +626,15 @@ page "Explain":
           actions:
             action "Open in source drawer":
               calls flow "rag_engine.open_citation"
+            action "Rename":
+              calls flow "rag_engine.rename_document"
+              interaction is rename_modal
+            action "Move to project...":
+              calls flow "rag_engine.move_document_to_project"
+              interaction is project_picker
+            action "Delete file":
+              calls flow "rag_engine.remove_document"
+              interaction is confirm_destructive
           empty_state: hidden
         source_preview from is state.ui.preview_source
 
