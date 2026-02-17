@@ -815,9 +815,9 @@ flow "ask_question": requires true
   let scope_document_count_for_indicator is list length of state.scope_document_ids
   if scope_document_count_for_indicator is greater than 0:
     if state.scope_indicator is "":
-      set state.scope_indicator is "Scope: @" + scope_document_count_for_indicator + " documents"
+      set state.scope_indicator is "Scope: @documents"
     else:
-      set state.scope_indicator is state.scope_indicator + " + @" + scope_document_count_for_indicator + " documents"
+      set state.scope_indicator is state.scope_indicator + " + @documents"
   set state.assistant_content is state.answer_text
   if state.scope_indicator is not "":
     set state.assistant_content is state.scope_indicator + "\n" + state.answer_text
