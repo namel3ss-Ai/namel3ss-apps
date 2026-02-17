@@ -8,9 +8,9 @@ Provide a professional, deterministic RAG workspace where users can:
 
 ## Primary Layout
 The Chat page uses a three-pane workspace:
-- Left pane: project scope and operational notices.
-- Center pane: intake, routing, and chat workflow.
-- Right pane: active project files and answer sources.
+- Left pane: projects and workspace activity.
+- Center pane: upload, routing, and active project knowledge.
+- Right pane: assistant chat and answer sources.
 
 ## Information Architecture
 ### Header
@@ -22,22 +22,24 @@ The Chat page uses a three-pane workspace:
 ### Left Pane
 - `Projects` list
 - Project actions: open, rename, duplicate, share, archive, delete
-- `Session Notes` list (ingestion and routing notices)
+- `Workspace Activity` list (ingestion and routing notices)
+- `View workspace status`
 - `Reset chat`
 
 ### Center Pane
-- `Project Intake`
+- `Upload Knowledge`
   - Upload: `project_files`
-  - Actions: `View project files`, `Create project index`
+  - Actions: `Create project index`, `View file status`
   - Web source input routed to `rag_engine.ingest_web_source`
-- `Library Routing`
-  - Library list with actions: assign, move, rename, delete
-- `Ask`
-  - Upload: `question_files`
-  - Composer bound to `rag_engine.ask_question`
+- `Knowledge Library`
+  - Library list with actions: add-to-project, move, rename, delete
+- `Active Project Knowledge`
+  - Project-scoped list with actions: rename, move, remove-from-project, delete
 
 ### Right Pane
-- `Active Project Files` list with actions: rename, move, remove-from-project, delete
+- `AI Assistant`
+  - Upload: `question_files`
+  - Chat composer bound to `rag_engine.ask_question`
 - `Answer Sources` list with actions: open in source drawer, rename, move, delete
 - `Workflow` checklist text
 
@@ -50,7 +52,7 @@ The Chat page uses a three-pane workspace:
 
 ### Routing path
 1. Library receives all uploaded assets.
-2. Project assignment is explicit through row actions.
+2. Project assignment is explicit through row actions (`add`, `move`, `remove`).
 3. Active project membership controls retrieval scope by default.
 
 ### Answer path
@@ -59,7 +61,7 @@ The Chat page uses a three-pane workspace:
 
 ## Naming and Copy Rules
 - Action labels are verb-first (`Create`, `View`, `Reset`, `Open`, `Delete`).
-- Section titles are noun-based and operational (`Project Intake`, `Library Routing`).
+- Section titles are noun-based and operational (`Upload Knowledge`, `Knowledge Library`).
 - Avoid ambiguous labels such as `Add New`.
 
 ## UX Quality Guardrails

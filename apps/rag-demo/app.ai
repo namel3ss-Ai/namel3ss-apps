@@ -17,19 +17,19 @@ ui_state:
 ui:
   preset is "clarity"
   theme is "light"
-  accent color is "green"
+  accent color is "blue"
   density is "comfortable"
   motion is "none"
   shape is "soft"
-  surface is "flat"
-  primary color is "#10A37F"
-  secondary color is "#D1D5DB"
-  background color is "#F7F7F8"
-  foreground color is "#1F2937"
-  font family is "Inter, system-ui"
+  surface is "raised"
+  primary color is "#1D4ED8"
+  secondary color is "#CBD5E1"
+  background color is "#F8FAFC"
+  foreground color is "#0F172A"
+  font family is "Manrope, Segoe UI, sans-serif"
   spacing scale is 1.0
-  border radius is 12
-  shadow level is 0
+  border radius is 10
+  shadow level is 1
 
 policy
   allow ingestion.run
@@ -216,8 +216,8 @@ page "Chat":
     panel_height is "full"
     resizable_panels is true
     header:
-      title is "Knowledge Workspace"
-      text is "Project-scoped ingestion and grounded answers with explicit source routing."
+      title is "RAG Workspace"
+      text is "Upload into the active project, index knowledge, then ask grounded questions with citations."
       row:
         column:
           button "Create project":
@@ -229,20 +229,22 @@ page "Chat":
             icon is refresh
             variant is "secondary"
             calls flow "rag_engine.sync_library"
-      row:
         column:
           button "Create project index":
             variant is "secondary"
             calls flow "rag_engine.ingest_selected"
+      row:
         column:
           button "Create chat":
             icon is chat_add_on
             variant is "secondary"
             calls flow "rag_engine.reset_chat"
+        column:
+          text is "Tip: use #project and @document in your prompt for one-time routing."
 
     sidebar_left:
       section "Projects":
-        text is "Keep sources isolated by project and switch scope with one action."
+        text is "Switch scope here. Uploads and retrieval in this page follow the active project."
 
         list is rag_engine.Project:
           variant is "icon_plain"
@@ -267,13 +269,23 @@ page "Chat":
               calls flow "rag_engine.delete_project"
               interaction is confirm_destructive
 
-      section "Session Notes":
-        text is "Operational notices for ingestion, routing, and answer readiness."
+        button "Create project":
+          icon is folder_add
+          variant is "secondary"
+          calls flow "rag_engine.create_project"
+
+      section "Workspace Activity":
+        text is "Operational notices for ingestion, indexing, and answer readiness."
         list is rag_engine.Notice:
           variant is "single_line"
           item:
             primary is message
           empty_state: hidden
+
+        button "View workspace status":
+          icon is refresh
+          variant is "secondary"
+          calls flow "rag_engine.sync_library"
 
         button "Reset chat":
           icon is chat_add_on
@@ -281,33 +293,33 @@ page "Chat":
           calls flow "rag_engine.reset_chat"
 
     main:
-      section "Project Intake":
-        text is "Upload directly into the active project. Files are auto-assigned to project scope."
+      section "Upload Knowledge":
+        text is "Upload PDFs or text files directly into the active project."
         upload project_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Upload to active project"
+          label is "Upload files to active project"
           preview is false
 
         row:
           column:
-            button "View project files":
-              icon is refresh
-              variant is "secondary"
-              calls flow "rag_engine.sync_library"
-          column:
             button "Create project index":
               variant is "primary"
               calls flow "rag_engine.ingest_selected"
+          column:
+            button "View file status":
+              icon is refresh
+              variant is "secondary"
+              calls flow "rag_engine.sync_library"
 
         input text as web_url
           send to flow "rag_engine.ingest_web_source"
 
-        text is "Web source ingestion routes content to the same project scope."
+        text is "Optional: ingest a public URL into the same project scope."
 
-      section "Library Routing":
-        text is "Library holds every uploaded file. Use row actions to assign, move, rename, or delete."
+      section "Knowledge Library":
+        text is "The library stores all sources. Use row actions to assign, move, rename, or delete."
 
         list is rag_engine.LibraryItem:
           variant is "two_line"
@@ -316,12 +328,12 @@ page "Chat":
             secondary is status_label
             meta is membership_label
           actions:
-            action "Assign to active project":
+            action "Add to active project":
               calls flow "rag_engine.add_document_to_project"
             action "Move to project...":
               calls flow "rag_engine.move_document_to_project"
               interaction is project_picker
-            action "Rename":
+            action "Rename file":
               calls flow "rag_engine.rename_document"
               interaction is rename_modal
             action "Delete file":
@@ -329,29 +341,8 @@ page "Chat":
               interaction is confirm_destructive
           empty_state: hidden
 
-      section "Ask":
-        text is "Ask against the active project. Use #project and @document for one-time scoped prompts."
-        upload question_files:
-          accept is "application/pdf,text/plain"
-          multiple is true
-          required is false
-          label is "Attach files for this question"
-          preview is false
-        chat:
-          style is "bubbles"
-          show_avatars is false
-          group_messages is true
-          actions are ["copy", "expand"]
-          attachments are true
-          streaming is false
-          composer_placeholder is "Ask a question about indexed project knowledge..."
-          composer_send_style is icon
-          messages from is state.chat.messages
-          composer calls flow "rag_engine.ask_question"
-
-    drawer_right:
-      section "Active Project Files":
-        text is "Files currently assigned to the active project."
+      section "Active Project Knowledge":
+        text is "These files are currently scoped to the active project and used during retrieval."
         list is rag_engine.ProjectKnowledgeItem:
           variant is "two_line"
           item:
@@ -360,7 +351,7 @@ page "Chat":
             meta is scope_label
           empty_state: hidden
           actions:
-            action "Rename":
+            action "Rename file":
               calls flow "rag_engine.rename_document"
               interaction is rename_modal
             action "Move to project...":
@@ -372,8 +363,29 @@ page "Chat":
               calls flow "rag_engine.remove_document"
               interaction is confirm_destructive
 
+    drawer_right:
+      section "AI Assistant":
+        text is "Ask questions against the active project. Attach files for one-time prompt context."
+        upload question_files:
+          accept is "application/pdf,text/plain"
+          multiple is true
+          required is false
+          label is "Attach files to this question"
+          preview is false
+        chat:
+          style is "bubbles"
+          show_avatars is false
+          group_messages is true
+          actions are ["copy", "expand"]
+          attachments are true
+          streaming is false
+          composer_placeholder is "Ask about this project's indexed documents..."
+          composer_send_style is icon
+          messages from is state.chat.messages
+          composer calls flow "rag_engine.ask_question"
+
       section "Answer Sources":
-        text is "Evidence extracted from the latest answer."
+        text is "Evidence cards extracted from the latest assistant answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
@@ -384,7 +396,7 @@ page "Chat":
           actions:
             action "Open in source drawer":
               calls flow "rag_engine.open_citation"
-            action "Rename":
+            action "Rename file":
               calls flow "rag_engine.rename_document"
               interaction is rename_modal
             action "Move to project...":
@@ -396,8 +408,8 @@ page "Chat":
 
       section "Workflow":
         text is "1) Upload to active project."
-        text is "2) Sync and create index."
-        text is "3) Ask and open grounded sources."
+        text is "2) Create project index."
+        text is "3) Ask in assistant and inspect sources."
 
 page "Library":
   debug_only: true
@@ -642,7 +654,7 @@ page "Explain":
           actions:
             action "Open in source drawer":
               calls flow "rag_engine.open_citation"
-            action "Rename":
+            action "Rename file":
               calls flow "rag_engine.rename_document"
               interaction is rename_modal
             action "Move to project...":
