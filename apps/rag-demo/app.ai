@@ -249,6 +249,14 @@ page "Chat":
           variant is "primary"
           calls flow "rag_engine.create_project"
 
+      section "Question Files":
+        upload question_files:
+          accept is "application/pdf,text/plain"
+          multiple is true
+          required is false
+          label is "Attach files for this question"
+          preview is false
+
     main:
       section "Assistant":
         row:
@@ -269,13 +277,6 @@ page "Chat":
           composer_send_style is icon
           messages from is state.chat.messages
           composer calls flow "rag_engine.ask_question"
-
-        upload question_files:
-          accept is "application/pdf,text/plain"
-          multiple is true
-          required is false
-          label is "Attach files for this question"
-          preview is false
 
       section "Project Intake":
         upload project_files:

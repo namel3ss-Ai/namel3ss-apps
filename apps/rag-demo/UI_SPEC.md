@@ -20,12 +20,13 @@ The Chat page uses a three-pane workspace:
 - `Projects` list
 - Project actions: open, rename, duplicate, share, archive, delete
 - `Create project`
+- `Question Files`
+  - Upload: `question_files`
 
 ### Center Pane
 - `Assistant`
   - Action: `Create chat`
   - Chat composer bound to `rag_engine.ask_question`
-  - Upload: `question_files`
 - `Project Intake`
   - Upload: `project_files`
   - Actions: `Create project index`, `View file status`
