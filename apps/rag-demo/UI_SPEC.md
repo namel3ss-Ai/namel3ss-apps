@@ -14,15 +14,14 @@ The Chat page uses a three-pane workspace:
 
 ## Information Architecture
 ### Header
-- `Create project`
-- `View workspace status`
-- `Create project index`
-- `Create chat`
+- Title only (`Knowledge Operations`)
 
 ### Left Pane
 - `Projects` list
 - Project actions: open, rename, duplicate, share, archive, delete
+- `Create project`
 - `System Notices` list (ingestion and routing notices)
+- `View workspace status`
 - `Reset chat`
 
 ### Center Pane
@@ -37,6 +36,7 @@ The Chat page uses a three-pane workspace:
 
 ### Right Pane
 - `Assistant`
+  - Action: `Create chat`
   - Upload: `question_files`
   - Chat composer bound to `rag_engine.ask_question`
 - `Source Evidence` list with actions: open in source drawer, rename, move, delete
