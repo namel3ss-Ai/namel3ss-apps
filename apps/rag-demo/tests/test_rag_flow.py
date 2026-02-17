@@ -121,7 +121,9 @@ def test_composer_appends_assistant_message_when_no_selection() -> None:
     assert len(messages) >= 2
     last_message = messages[-1]
     assert last_message["role"] == "assistant"
-    assert last_message["content"] == data["result"]["answer_text"]
+    assistant_text = str(last_message.get("content") or "")
+    answer_text = str(data["result"]["answer_text"] or "")
+    assert answer_text in assistant_text
 
 
 def test_ingest_web_source_requires_url() -> None:

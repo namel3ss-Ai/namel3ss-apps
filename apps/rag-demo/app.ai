@@ -216,27 +216,33 @@ page "Chat":
     panel_height is "full"
     resizable_panels is true
     header:
-      title is "RAG Assistant"
-      text is "Knowledge path: Project upload or question attachment -> Library -> Active project -> Index -> Ask with citations."
+      title is "Knowledge Workspace"
+      text is "Project-scoped ingestion and grounded answers with explicit source routing."
       row:
         column:
-          button "Create chat":
-            icon is chat_add_on
+          button "Create project":
+            icon is folder_add
             variant is "primary"
-            calls flow "rag_engine.reset_chat"
+            calls flow "rag_engine.create_project"
         column:
-          button "View knowledge status":
+          button "View workspace status":
             icon is refresh
             variant is "secondary"
             calls flow "rag_engine.sync_library"
+      row:
+        column:
+          button "Create project index":
+            variant is "secondary"
+            calls flow "rag_engine.ingest_selected"
+        column:
+          button "Create chat":
+            icon is chat_add_on
+            variant is "secondary"
+            calls flow "rag_engine.reset_chat"
 
     sidebar_left:
       section "Projects":
-        text is "Keep document sets isolated by project."
-        button "Create project":
-          icon is folder_add
-          variant is "primary"
-          calls flow "rag_engine.create_project"
+        text is "Keep sources isolated by project and switch scope with one action."
 
         list is rag_engine.Project:
           variant is "icon_plain"
@@ -244,6 +250,7 @@ page "Chat":
             primary is name
             secondary is status_label
             icon is icon
+          empty_state: hidden
           actions:
             action "Open":
               calls flow "rag_engine.set_active_project"
@@ -260,60 +267,48 @@ page "Chat":
               calls flow "rag_engine.delete_project"
               interaction is confirm_destructive
 
-      section "Chats":
-        text is "Start a fresh chat in the active project."
-        button "Create chat":
-          icon is chat_add_on
-          variant is "primary"
-          calls flow "rag_engine.reset_chat"
-
+      section "Session Notes":
+        text is "Operational notices for ingestion, routing, and answer readiness."
         list is rag_engine.Notice:
           variant is "single_line"
           item:
             primary is message
+          empty_state: hidden
+
+        button "Reset chat":
+          icon is chat_add_on
+          variant is "secondary"
+          calls flow "rag_engine.reset_chat"
 
     main:
-      section "Ask":
-        text is "Attach files for this question or upload directly into the active project."
-        upload question_files:
+      section "Project Intake":
+        text is "Upload directly into the active project. Files are auto-assigned to project scope."
+        upload project_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Attach files for this question"
+          label is "Upload to active project"
           preview is false
-        text is "Question attachments are auto-synced and routed to the active project when you send."
-        chat:
-          style is "bubbles"
-          show_avatars is false
-          group_messages is true
-          actions are ["copy", "expand"]
-          attachments are true
-          streaming is false
-          composer_placeholder is "Ask a question about project files... use #project or @document"
-          composer_send_style is icon
-          messages from is state.chat.messages
-          composer calls flow "rag_engine.ask_question"
 
-    drawer_right:
-      section "File path":
-        text is "1) Upload in Active Project Files or Attach files for this question."
-        text is "2) Sync the knowledge workspace."
-        text is "3) Review Library routing and adjust with the ... menu."
-        text is "4) Run Create Index to refresh chunks."
-        text is "5) Ask in chat and open citations."
-
-      section "Knowledge Workspace":
-        text is "Library contains all uploaded files. Assignment to projects is explicit and traceable."
+        row:
+          column:
+            button "View project files":
+              icon is refresh
+              variant is "secondary"
+              calls flow "rag_engine.sync_library"
+          column:
+            button "Create project index":
+              variant is "primary"
+              calls flow "rag_engine.ingest_selected"
 
         input text as web_url
           send to flow "rag_engine.ingest_web_source"
 
-        button "View library":
-          icon is refresh
-          variant is "secondary"
-          calls flow "rag_engine.sync_library"
+        text is "Web source ingestion routes content to the same project scope."
 
-        text is "Library files: use the ... menu on each row for rename, move, assignment, or delete."
+      section "Library Routing":
+        text is "Library holds every uploaded file. Use row actions to assign, move, rename, or delete."
+
         list is rag_engine.LibraryItem:
           variant is "two_line"
           item:
@@ -334,21 +329,36 @@ page "Chat":
               interaction is confirm_destructive
           empty_state: hidden
 
-      section "Active Project Files":
-        text is "Files uploaded here are automatically assigned to the active project."
-        upload project_files:
+      section "Ask":
+        text is "Ask against the active project. Use #project and @document for one-time scoped prompts."
+        upload question_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Upload to active project"
+          label is "Attach files for this question"
           preview is false
-        text is "Use the ... menu on each row for rename, move, remove, or delete."
+        chat:
+          style is "bubbles"
+          show_avatars is false
+          group_messages is true
+          actions are ["copy", "expand"]
+          attachments are true
+          streaming is false
+          composer_placeholder is "Ask a question about indexed project knowledge..."
+          composer_send_style is icon
+          messages from is state.chat.messages
+          composer calls flow "rag_engine.ask_question"
+
+    drawer_right:
+      section "Active Project Files":
+        text is "Files currently assigned to the active project."
         list is rag_engine.ProjectKnowledgeItem:
           variant is "two_line"
           item:
             primary is source_name
             secondary is status_label
             meta is scope_label
+          empty_state: hidden
           actions:
             action "Rename":
               calls flow "rag_engine.rename_document"
@@ -362,16 +372,17 @@ page "Chat":
               calls flow "rag_engine.remove_document"
               interaction is confirm_destructive
 
-      section "Sources":
-        text is "Open evidence for the latest answer."
+      section "Answer Sources":
+        text is "Evidence extracted from the latest answer."
         list is rag_engine.CitationCard:
           variant is "two_line"
           item:
             primary is source_name
             secondary is page_label
             meta is snippet
+          empty_state: hidden
           actions:
-            action "Open":
+            action "Open in source drawer":
               calls flow "rag_engine.open_citation"
             action "Rename":
               calls flow "rag_engine.rename_document"
@@ -382,6 +393,11 @@ page "Chat":
             action "Delete file":
               calls flow "rag_engine.remove_document"
               interaction is confirm_destructive
+
+      section "Workflow":
+        text is "1) Upload to active project."
+        text is "2) Sync and create index."
+        text is "3) Ask and open grounded sources."
 
 page "Library":
   debug_only: true

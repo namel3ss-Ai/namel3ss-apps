@@ -1,4 +1,4 @@
-# RAG Demo (Namel3ss 0.1.0a22)
+# RAG Demo (Namel3ss 0.1.0a23)
 
 Premium deterministic RAG demo built in Namel3ss with:
 
@@ -9,7 +9,7 @@ Premium deterministic RAG demo built in Namel3ss with:
 
 ## Dependency Pin
 
-- `namel3ss==0.1.0a22` (see `pyproject.toml`)
+- `namel3ss==0.1.0a23` (see `pyproject.toml`)
 
 ## Quickstart
 
@@ -17,7 +17,7 @@ Premium deterministic RAG demo built in Namel3ss with:
 python3.14 -m venv apps/rag-demo/.venv
 source apps/rag-demo/.venv/bin/activate
 python -m pip install -U pip
-python -m pip install -U "namel3ss==0.1.0a22" pytest
+python -m pip install -U "namel3ss==0.1.0a23" pytest
 python apps/rag-demo/tools/ensure_provider_manifests.py
 python -m namel3ss check apps/rag-demo/app.ai
 apps/rag-demo/.venv/bin/n3 check apps/rag-demo/app.ai
@@ -147,7 +147,7 @@ curl -I http://127.0.0.1:7360/renderer_registry.js
 Run full local validation (no shell wrappers):
 
 ```bash
-python -m pip install -U "namel3ss==0.1.0a22"
+python -m pip install -U "namel3ss==0.1.0a23"
 python -m pip install pytest
 python apps/rag-demo/tools/ensure_provider_manifests.py
 n3 check apps/rag-demo/app.ai
