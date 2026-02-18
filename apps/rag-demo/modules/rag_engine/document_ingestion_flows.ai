@@ -83,8 +83,8 @@ flow "ingest_web_source": requires true
     "progress_percent" is 30
     "quality" is "pending"
     "selected" is state.web_selected
-    "status_label" is "Fetching • WEB"
-    "scope_label" is state.web_primary_tag + " • priority"
+    "status_label" is "Fetching â€¢ WEB"
+    "scope_label" is state.web_primary_tag + " â€¢ priority"
     "weight" is state.web_weight
     "tags" is state.web_tags
     "primary_tag" is state.web_primary_tag
@@ -142,8 +142,8 @@ flow "ingest_web_source": requires true
       "progress_percent" is 100
       "quality" is "fail"
       "selected" is state.web_selected
-      "status_label" is "Failed • WEB"
-      "scope_label" is state.web_primary_tag + " • priority"
+      "status_label" is "Failed â€¢ WEB"
+      "scope_label" is state.web_primary_tag + " â€¢ priority"
       "weight" is state.web_weight
       "tags" is state.web_tags
       "primary_tag" is state.web_primary_tag
@@ -207,8 +207,8 @@ flow "ingest_web_source": requires true
     "progress_percent" is 100
     "quality" is "pass"
     "selected" is state.web_selected
-    "status_label" is "Indexed • WEB"
-    "scope_label" is state.web_primary_tag + " • priority"
+    "status_label" is "Indexed â€¢ WEB"
+    "scope_label" is state.web_primary_tag + " â€¢ priority"
     "weight" is state.web_weight
     "tags" is state.web_tags
     "primary_tag" is state.web_primary_tag
@@ -261,19 +261,44 @@ flow "ingest_selected": requires true
   for each binding in projectbinding_results:
     set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
 
+  set state.ingest_scope_override_input is list:
+  try:
+    let override_upload_ids is state.ingest_scope_override_upload_ids
+    for each override_upload_id in override_upload_ids:
+      if override_upload_id is not "":
+        set state.ingest_scope_override_input is list append state.ingest_scope_override_input with override_upload_id
+  with catch err:
+    set state.ingest_scope_override_input is state.ingest_scope_override_input
+  let override_upload_count is list length of state.ingest_scope_override_input
+
   for each doc in documentlibrary_results:
     set state.include_doc is false
-    for each active_upload_id in state.active_project_upload_ids:
-      if active_upload_id is doc.upload_id:
-        set state.include_doc is true
+    if override_upload_count is greater than 0:
+      for each override_upload_id in state.ingest_scope_override_input:
+        if override_upload_id is doc.upload_id:
+          set state.include_doc is true
+    else:
+      for each active_upload_id in state.active_project_upload_ids:
+        if active_upload_id is doc.upload_id:
+          set state.include_doc is true
     if state.include_doc is true:
       set state.selected_docs is list append state.selected_docs with doc
 
   let selected_count is list length of state.selected_docs
   if selected_count is 0:
-    for each doc in documentlibrary_results:
-      set state.selected_docs is list append state.selected_docs with doc
-    let selected_count is list length of state.selected_docs
+    if override_upload_count is greater than 0:
+      for each doc in documentlibrary_results:
+        set state.include_doc is false
+        for each override_upload_id in state.ingest_scope_override_input:
+          if override_upload_id is doc.upload_id:
+            set state.include_doc is true
+        if state.include_doc is true:
+          set state.selected_docs is list append state.selected_docs with doc
+      let selected_count is list length of state.selected_docs
+    else:
+      for each doc in documentlibrary_results:
+        set state.selected_docs is list append state.selected_docs with doc
+      let selected_count is list length of state.selected_docs
 
   if selected_count is 0:
     delete "Notice" where true
@@ -313,8 +338,8 @@ flow "ingest_selected": requires true
       "progress_percent" is state.progress_percent
       "quality" is "pending"
       "selected" is doc.selected
-      "status_label" is "Parsing • " + doc.source_type
-      "scope_label" is doc.primary_tag + " • priority"
+      "status_label" is "Parsing â€¢ " + doc.source_type
+      "scope_label" is doc.primary_tag + " â€¢ priority"
       "weight" is doc.weight
       "tags" is doc.tags
       "primary_tag" is doc.primary_tag
@@ -337,8 +362,8 @@ flow "ingest_selected": requires true
       "progress_percent" is state.progress_percent
       "quality" is "pending"
       "selected" is doc.selected
-      "status_label" is "Chunking • " + doc.source_type
-      "scope_label" is doc.primary_tag + " • priority"
+      "status_label" is "Chunking â€¢ " + doc.source_type
+      "scope_label" is doc.primary_tag + " â€¢ priority"
       "weight" is doc.weight
       "tags" is doc.tags
       "primary_tag" is doc.primary_tag
@@ -361,8 +386,8 @@ flow "ingest_selected": requires true
       "progress_percent" is state.progress_percent
       "quality" is "pending"
       "selected" is doc.selected
-      "status_label" is "Embedding • " + doc.source_type
-      "scope_label" is doc.primary_tag + " • priority"
+      "status_label" is "Embedding â€¢ " + doc.source_type
+      "scope_label" is doc.primary_tag + " â€¢ priority"
       "weight" is doc.weight
       "tags" is doc.tags
       "primary_tag" is doc.primary_tag
@@ -385,8 +410,8 @@ flow "ingest_selected": requires true
       "progress_percent" is state.progress_percent
       "quality" is "pending"
       "selected" is doc.selected
-      "status_label" is "Indexing • " + doc.source_type
-      "scope_label" is doc.primary_tag + " • priority"
+      "status_label" is "Indexing â€¢ " + doc.source_type
+      "scope_label" is doc.primary_tag + " â€¢ priority"
       "weight" is doc.weight
       "tags" is doc.tags
       "primary_tag" is doc.primary_tag
@@ -400,6 +425,8 @@ flow "ingest_selected": requires true
     set state.ocr_retry_used is false
     set state.preview_recovery_used is false
     set state.preview_text is ""
+    set state.index_payload is ""
+    set state.report_payload is ""
     set state.skip_pipeline is false
     if doc.source_type is "WEB":
       set state.skip_pipeline is true
@@ -445,6 +472,8 @@ flow "ingest_selected": requires true
           set state.incoming_chunks is chunk_list
         with catch err:
           set state.incoming_chunks is list:
+        if state.quality is "block":
+          set state.incoming_chunks is list:
 
         set state.retry_ocr is false
         if doc.source_type is "PDF":
@@ -475,6 +504,8 @@ flow "ingest_selected": requires true
               let ocr_chunk_list is map get state.index_payload key "chunks"
               set state.incoming_chunks is ocr_chunk_list
             with catch err:
+              set state.incoming_chunks is list:
+            if state.quality is "block":
               set state.incoming_chunks is list:
           with catch err:
             set state.last_error is "pipeline_ocr_error"
@@ -594,23 +625,29 @@ flow "ingest_selected": requires true
     set state.final_status is "indexed"
     set state.final_stage is "indexed"
     set state.final_progress is 100
-    set state.final_label is "Indexed • " + doc.source_type
+    set state.final_label is "Indexed â€¢ " + doc.source_type
     set state.final_note is "Indexed and ready for retrieval."
 
     if state.quality is "fail":
       set state.final_status is "failed"
       set state.final_stage is "failed_indexing"
-      set state.final_label is "Failed • " + doc.source_type
+      set state.final_label is "Failed - " + doc.source_type
       set state.final_note is "Ingestion failed. Retry or upload cleaner content."
       set state.failed_count is state.failed_count + 1
     else:
-      if state.quality is "warn":
-        if state.preview_recovery_used is true:
-          set state.final_label is "Indexed (Preview Recovery) - " + doc.source_type
-          set state.final_note is "Indexed from low-confidence preview text after quality gate block. Re-run with OCR for better grounding."
-        else:
-          set state.final_label is "Indexed (Fallback) - " + doc.source_type
-          set state.final_note is "Fallback chunk indexed. Upload searchable/OCR text for better grounding."
+      if state.quality is "block":
+        set state.final_label is "Needs readable text - " + doc.source_type
+        set state.final_note is "No readable text was extracted (including OCR fallback). Upload a text-searchable PDF or OCR text, then re-index."
+        if state.last_error is "":
+          set state.last_error is "no_readable_text"
+      else:
+        if state.quality is "warn":
+          if state.preview_recovery_used is true:
+            set state.final_label is "Indexed (Preview Recovery) - " + doc.source_type
+            set state.final_note is "Indexed from low-confidence preview text after quality gate block. Re-run with OCR for better grounding."
+          else:
+            set state.final_label is "Indexed (Fallback) - " + doc.source_type
+            set state.final_note is "Fallback chunk indexed. Upload searchable/OCR text for better grounding."
       set state.indexed_count is state.indexed_count + 1
 
     delete "DocumentLibrary" where upload_id is doc.upload_id
@@ -626,7 +663,7 @@ flow "ingest_selected": requires true
       "quality" is state.quality
       "selected" is doc.selected
       "status_label" is state.final_label
-      "scope_label" is doc.primary_tag + " • priority"
+      "scope_label" is doc.primary_tag + " â€¢ priority"
       "weight" is doc.weight
       "tags" is doc.tags
       "primary_tag" is doc.primary_tag
@@ -704,8 +741,8 @@ flow "bulk_reindex_selected": requires true
       "progress_percent" is 0
       "quality" is "pending"
       "selected" is doc.selected
-      "status_label" is "Queued • " + doc.source_type
-      "scope_label" is doc.primary_tag + " • priority"
+      "status_label" is "Queued â€¢ " + doc.source_type
+      "scope_label" is doc.primary_tag + " â€¢ priority"
       "weight" is doc.weight
       "tags" is doc.tags
       "primary_tag" is doc.primary_tag
@@ -751,8 +788,8 @@ flow "ingest_document": requires true
     "progress_percent" is 0
     "quality" is "pending"
     "selected" is true
-    "status_label" is "Queued • " + doc.source_type
-    "scope_label" is doc.primary_tag + " • priority"
+    "status_label" is "Queued â€¢ " + doc.source_type
+    "scope_label" is doc.primary_tag + " â€¢ priority"
     "weight" is doc.weight
     "tags" is doc.tags
     "primary_tag" is doc.primary_tag
@@ -798,8 +835,8 @@ flow "retry_document": requires true
     "progress_percent" is 0
     "quality" is "pending"
     "selected" is true
-    "status_label" is "Queued • " + doc.source_type
-    "scope_label" is doc.primary_tag + " • priority"
+    "status_label" is "Queued â€¢ " + doc.source_type
+    "scope_label" is doc.primary_tag + " â€¢ priority"
     "weight" is doc.weight
     "tags" is doc.tags
     "primary_tag" is doc.primary_tag

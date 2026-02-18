@@ -1,5 +1,0 @@
-Architecture Notes
-
-Hybrid retrieval combines semantic ranking with lexical keyword overlap.
-Source weights can deterministically boost priority for preferred collections.
-Small-to-big expansion includes neighboring chunks around selected evidence.

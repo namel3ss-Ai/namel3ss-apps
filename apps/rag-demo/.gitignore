@@ -1,8 +1,0 @@
-.env
-.env.local
-.env.development
-.env.test
-
-.namel3ss/
-__pycache__/
-*.pyc

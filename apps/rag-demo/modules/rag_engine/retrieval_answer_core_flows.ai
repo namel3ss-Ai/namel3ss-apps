@@ -17,6 +17,9 @@ flow "ask_question": requires true
   set state.scope_project_conflict is false
   set state.scope_document_ids is list:
   set state.scope_document_mode is "once"
+  set state.force_question_upload_scope is false
+  set state.question_upload_scope_ids is list:
+  set state.ingest_scope_override_upload_ids is list:
   try:
     let message_query is input.message
     if message_query is not "":
@@ -112,6 +115,30 @@ flow "ask_question": requires true
     input:
     output:
       status
+
+  try:
+    for each question_upload_id in state.question_origin_upload_ids:
+      if question_upload_id is not "":
+        set state.question_upload_scope_ids is list append state.question_upload_scope_ids with question_upload_id
+  with catch err:
+    set state.question_upload_scope_ids is state.question_upload_scope_ids
+
+  set state.question_upload_scope_ids_unique is list:
+  for each question_upload_id in state.question_upload_scope_ids:
+    set state.question_upload_seen is false
+    for each known_question_upload_id in state.question_upload_scope_ids_unique:
+      if known_question_upload_id is question_upload_id:
+        set state.question_upload_seen is true
+    if state.question_upload_seen is false:
+      set state.question_upload_scope_ids_unique is list append state.question_upload_scope_ids_unique with question_upload_id
+  set state.question_upload_scope_ids is state.question_upload_scope_ids_unique
+
+  let question_upload_scope_count is list length of state.question_upload_scope_ids
+  if question_upload_scope_count is greater than 0:
+    set state.scope_document_ids is state.question_upload_scope_ids
+    set state.scope_document_mode is "once"
+    set state.force_question_upload_scope is true
+
   if state.scope_project_id is "":
     set state.scope_project_id is state.active_project_id
   find "Project" where id is state.scope_project_id
@@ -223,14 +250,53 @@ flow "ask_question": requires true
         "message" is "No sources were marked in scope for the active project. Using project sources for this answer."
       as notice_scope_fallback
 
+  set state.scope_chunk_upload_ids is list:
+  try:
+    let known_index is state.index
+    let known_chunks is map get known_index key "chunks"
+    for each known_chunk in known_chunks:
+      set state.scope_chunk_phase is ""
+      try:
+        let known_chunk_phase is known_chunk.ingestion_phase
+        if known_chunk_phase is not "":
+          set state.scope_chunk_phase is known_chunk_phase
+      with catch err:
+        set state.scope_chunk_phase is state.scope_chunk_phase
+      set state.scope_chunk_upload_id is ""
+      try:
+        let known_chunk_upload_id is known_chunk.upload_id
+        if known_chunk_upload_id is not "":
+          set state.scope_chunk_upload_id is known_chunk_upload_id
+      with catch err:
+        set state.scope_chunk_upload_id is state.scope_chunk_upload_id
+      if state.scope_chunk_upload_id is not "":
+        if state.scope_chunk_phase is "fallback":
+          set state.scope_chunk_upload_id is ""
+      if state.scope_chunk_upload_id is not "":
+        set state.scope_chunk_upload_ids is list append state.scope_chunk_upload_ids with state.scope_chunk_upload_id
+  with catch err:
+    set state.scope_chunk_upload_ids is state.scope_chunk_upload_ids
+
+  set state.scope_has_index_chunks is false
   for each selected_doc in state.selected_docs_for_query:
     if selected_doc.status is not "indexed":
       set state.needs_auto_ingest is true
+    for each scope_chunk_upload_id in state.scope_chunk_upload_ids:
+      if scope_chunk_upload_id is selected_doc.upload_id:
+        set state.scope_has_index_chunks is true
+
+  if state.scope_has_index_chunks is false:
+    let selected_scope_count_for_chunks is list length of state.selected_docs_for_query
+    if selected_scope_count_for_chunks is greater than 0:
+      set state.needs_auto_ingest is true
   if state.needs_auto_ingest is true:
+    if state.force_question_upload_scope is true:
+      set state.ingest_scope_override_upload_ids is state.scope_document_ids
     let ingest_status is call flow "rag_engine.ingest_selected":
       input:
       output:
         status
+    set state.ingest_scope_override_upload_ids is list:
     if scoped_document_count is greater than 0:
       find "DocumentLibrary" where true
       set state.selected_docs_for_query is list:
@@ -255,10 +321,16 @@ flow "ask_question": requires true
   set state.user_prompt is state.q
   if state.raw_message is not "":
     set state.user_prompt is state.raw_message
+  set state.copy_action with:
+    id is "copy"
+    label is "Copy"
+    icon is "content_copy"
+  set state.user_actions is list:
+    state.copy_action
   set state.user_message with:
     role is "user"
     content is state.user_prompt
-    actions is list: "copy", "expand"
+    actions is state.user_actions
     attachments is list:
     citations is list:
     trust is false
@@ -383,8 +455,13 @@ flow "ask_question": requires true
   set state.answer.mode is "no_selection"
   let scoped_count is list length of state.scope_docs
   if scoped_count is 0:
-    set state.answer_text is "No selected sources match your active tag filters."
-    set state.answer_mode is "no_selection"
+    let selected_count is list length of selected_docs
+    if selected_count is 0:
+      set state.answer_text is "No sources are currently in this scope. Upload to the active project (or attach with +), wait for indexing, then ask again."
+      set state.answer_mode is "no_scope_sources"
+    else:
+      set state.answer_text is "No selected sources match your active tag filters."
+      set state.answer_mode is "no_selection"
   else:
     let chunks is list:
     try:
@@ -418,6 +495,75 @@ flow "ask_question": requires true
             tag is doc.primary_tag
           set state.active_chunks is list append state.active_chunks with state.chunk_row
     let active_chunk_count is list length of state.active_chunks
+    if active_chunk_count is 0:
+      if state.force_question_upload_scope is true:
+        for each scope_doc in state.scope_docs:
+          set state.inline_ingest_chunks is list:
+          set state.inline_preview_text is ""
+          set state.inline_quality_status is ""
+          try:
+            let inline_out is call pipeline "ingestion":
+              input:
+                upload_id is scope_doc.upload_id
+              output:
+                report
+                ingestion
+                index
+            set state.inline_index_payload is map get inline_out key "index"
+            set state.inline_report_payload is map get inline_out key "report"
+            try:
+              let inline_status is map get state.inline_report_payload key "status"
+              if inline_status is not "":
+                set state.inline_quality_status is inline_status
+            with catch err:
+              set state.inline_quality_status is state.inline_quality_status
+            try:
+              let inline_chunks is map get state.inline_index_payload key "chunks"
+              set state.inline_ingest_chunks is inline_chunks
+            with catch err:
+              set state.inline_ingest_chunks is state.inline_ingest_chunks
+            if state.inline_quality_status is "block":
+              set state.inline_ingest_chunks is list:
+            try:
+              let inline_preview is map get state.inline_report_payload key "preview"
+              if inline_preview is not "":
+                set state.inline_preview_text is inline_preview
+            with catch err:
+              set state.inline_preview_text is state.inline_preview_text
+          with catch err:
+            set state.inline_ingest_chunks is state.inline_ingest_chunks
+
+          let inline_chunk_count is list length of state.inline_ingest_chunks
+          if inline_chunk_count is 0:
+            if state.inline_preview_text is not "":
+              set state.inline_preview_chunk with:
+                chunk_id is scope_doc.upload_id + ":preview:1"
+                upload_id is scope_doc.upload_id
+                document_id is scope_doc.document_id
+                source_name is scope_doc.source_name
+                page_number is 1
+                chunk_index is 1
+                ingestion_phase is "preview_recovery"
+                text is state.inline_preview_text
+                keywords is list: "preview", "recovery", "document", "source"
+              set state.inline_ingest_chunks is list append state.inline_ingest_chunks with state.inline_preview_chunk
+
+          for each inline_chunk in state.inline_ingest_chunks:
+            set state.chunk_row with:
+              chunk_id is inline_chunk.chunk_id
+              upload_id is inline_chunk.upload_id
+              document_id is inline_chunk.document_id
+              source_name is inline_chunk.source_name
+              page_number is inline_chunk.page_number
+              chunk_index is inline_chunk.chunk_index
+              ingestion_phase is inline_chunk.ingestion_phase
+              snippet is inline_chunk.text
+              keywords is inline_chunk.keywords
+              source_weight is scope_doc.weight
+              tag is scope_doc.primary_tag
+            set state.active_chunks is list append state.active_chunks with state.chunk_row
+
+        set active_chunk_count is list length of state.active_chunks
     if active_chunk_count is 0:
       set state.answer_text is "No indexed chunks are available in the active scope yet. Try again in a moment."
       set state.answer_mode is "no_indexed_chunks"
@@ -802,22 +948,28 @@ flow "ask_question": requires true
     if state.answer_mode is not "fallback_only":
       set state.assistant_has_sources is true
   set state.assistant_actions is list:
-    "copy"
-    "expand"
+    state.copy_action
   if state.assistant_has_sources is true:
-    set state.assistant_actions is list append state.assistant_actions with "view_sources"
+    set state.sources_action with:
+      id is "view_sources"
+      label is "Sources"
+      icon is "source_notes"
+    set state.assistant_actions is list append state.assistant_actions with state.sources_action
   set state.scope_indicator is ""
-  if state.scope_project_label is not "":
-    set state.scope_indicator is "Scope: #" + state.scope_project_label
+  if state.force_question_upload_scope is true:
+    set state.scope_indicator is "Scope: attached files"
   else:
-    if state.scope_project_id is not "":
-      set state.scope_indicator is "Scope: #" + state.scope_project_id
-  let scope_document_count_for_indicator is list length of state.scope_document_ids
-  if scope_document_count_for_indicator is greater than 0:
-    if state.scope_indicator is "":
-      set state.scope_indicator is "Scope: @documents"
+    if state.scope_project_label is not "":
+      set state.scope_indicator is "Scope: #" + state.scope_project_label
     else:
-      set state.scope_indicator is state.scope_indicator + " + @documents"
+      if state.scope_project_id is not "":
+        set state.scope_indicator is "Scope: #" + state.scope_project_id
+    let scope_document_count_for_indicator is list length of state.scope_document_ids
+    if scope_document_count_for_indicator is greater than 0:
+      if state.scope_indicator is "":
+        set state.scope_indicator is "Scope: @documents"
+      else:
+        set state.scope_indicator is state.scope_indicator + " + @documents"
   set state.assistant_content is state.answer_text
   if state.scope_indicator is not "":
     set state.assistant_content is state.scope_indicator + "\n" + state.answer_text
@@ -857,6 +1009,8 @@ flow "ask_question": requires true
           "id" is "current"
           "message" is "Answer ready with inline citations and trust indicator."
         as notice_answer
+  if state.force_question_upload_scope is true:
+    set state.uploads.chat_files is list:
   return map:
     "answer_text" is state.answer_text
     "mode" is state.answer_mode

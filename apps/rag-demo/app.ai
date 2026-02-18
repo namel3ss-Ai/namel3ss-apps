@@ -227,10 +227,14 @@ page "Chat":
             primary is name
             secondary is status_label
             icon is icon
+            icon_color is icon_color
           empty_state: hidden
           actions:
             action "Open":
               calls flow "rag_engine.set_active_project"
+            action "Upload files":
+              calls flow "rag_engine.set_active_project"
+              interaction is upload_picker
             action "Rename":
               calls flow "rag_engine.rename_active_project"
               interaction is rename_modal
@@ -244,17 +248,37 @@ page "Chat":
               calls flow "rag_engine.delete_project"
               interaction is confirm_destructive
 
+        list is rag_engine.ProjectKnowledgeItem:
+          variant is "two_line"
+          group_by is project_id
+          group_label is project_name
+          item:
+            primary is source_name
+            secondary is status_label
+          empty_state: hidden
+          actions:
+            action "Rename file":
+              calls flow "rag_engine.rename_document"
+              interaction is rename_modal
+            action "Move to project...":
+              calls flow "rag_engine.move_document_to_project"
+              interaction is project_picker
+            action "Remove from project":
+              calls flow "rag_engine.remove_document_from_project"
+            action "Delete file":
+              calls flow "rag_engine.remove_document"
+              interaction is confirm_destructive
+
         button "Create project":
-          icon is folder_add
+          icon is folder
           variant is "primary"
           calls flow "rag_engine.create_project"
 
-      section "Question Files":
-        upload question_files:
+        upload project_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Attach files for this question"
+          label is "Upload to active project"
           preview is false
 
     main:
@@ -270,79 +294,21 @@ page "Chat":
           style is "bubbles"
           show_avatars is false
           group_messages is true
-          actions are ["copy", "expand"]
+          actions are ["copy", "view_sources"]
           attachments are true
           streaming is false
           composer_placeholder is "Ask a grounded question about this project..."
           composer_send_style is icon
-          composer_attach_upload is "question_files"
+          composer_attach_upload is "chat_files"
           messages from is state.chat.messages
           composer calls flow "rag_engine.ask_question"
 
-      section "Project Intake":
-        upload project_files:
+        upload chat_files:
           accept is "application/pdf,text/plain"
           multiple is true
           required is false
-          label is "Upload files"
+          label is "Attach files for this question"
           preview is false
-
-        row:
-          column:
-            button "Create project index":
-              variant is "primary"
-              calls flow "rag_engine.ingest_selected"
-          column:
-            button "View file status":
-              icon is refresh
-              variant is "secondary"
-              calls flow "rag_engine.sync_library"
-
-        input text as web_url
-          send to flow "rag_engine.ingest_web_source"
-
-      section "Project Files":
-        list is rag_engine.ProjectKnowledgeItem:
-          variant is "two_line"
-          item:
-            primary is source_name
-            secondary is status_label
-            meta is scope_label
-          empty_state: hidden
-          actions:
-            action "Rename file":
-              calls flow "rag_engine.rename_document"
-              interaction is rename_modal
-            action "Move to project...":
-              calls flow "rag_engine.move_document_to_project"
-              interaction is project_picker
-            action "Remove from project":
-              calls flow "rag_engine.remove_document_from_project"
-            action "Delete file":
-              calls flow "rag_engine.remove_document"
-              interaction is confirm_destructive
-
-    drawer_right:
-      section "Source Evidence":
-        list is rag_engine.CitationCard:
-          variant is "two_line"
-          item:
-            primary is source_name
-            secondary is page_label
-            meta is snippet
-          empty_state: hidden
-          actions:
-            action "Open in source drawer":
-              calls flow "rag_engine.open_citation"
-            action "Rename file":
-              calls flow "rag_engine.rename_document"
-              interaction is rename_modal
-            action "Move to project...":
-              calls flow "rag_engine.move_document_to_project"
-              interaction is project_picker
-            action "Delete file":
-              calls flow "rag_engine.remove_document"
-              interaction is confirm_destructive
 
 page "Library":
   debug_only: true

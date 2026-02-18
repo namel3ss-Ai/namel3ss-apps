@@ -79,6 +79,18 @@ flow "initialize_defaults": requires true
     set state.bootstrap_ready is false
 
   if state.bootstrap_ready is true:
+    let projects_status is call flow "rag_engine.ensure_projects":
+      input:
+      output:
+        status
+    let project_status is call flow "rag_engine.refresh_project_stats":
+      input:
+      output:
+        status
+    let summary_status is call flow "rag_engine.refresh_index_summary":
+      input:
+      output:
+        status
     return map:
       "status" is "ok"
 

@@ -32,32 +32,58 @@ flow "refresh_project_stats": requires true
 
   for each project in project_results:
     set state.file_count is 0
+    set state.first_source_name is ""
     find "ProjectBinding" where project_id is project.id
     for each binding in projectbinding_results:
       find "DocumentLibrary" where upload_id is binding.upload_id
       let doc_count is list length of documentlibrary_results
       if doc_count is greater than 0:
         set state.file_count is state.file_count + 1
+        if state.first_source_name is "":
+          let first_doc is list get documentlibrary_results at 0
+          set state.first_source_name is binding.upload_id
+          try:
+            let maybe_source_name is first_doc.source_name
+            if maybe_source_name is not "":
+              set state.first_source_name is maybe_source_name
+          with catch err:
+            set state.first_source_name is state.first_source_name
 
     set state.status_label is "Empty"
     if state.file_count is 1:
-      set state.status_label is "1 file"
+      if state.first_source_name is "":
+        set state.status_label is "1 file"
+      else:
+        set state.status_label is "1 file - " + state.first_source_name
     else:
       if state.file_count is greater than 1:
-        set state.status_label is "Multiple files"
+        if state.first_source_name is "":
+          set state.status_label is "Multiple files"
+        else:
+          set state.status_label is "Multiple files - " + state.first_source_name
 
     set state.is_active is false
     if project.id is state.active_project_id:
       set state.is_active is true
-      set state.status_label is "Active • " + state.status_label
+      set state.status_label is "Active - " + state.status_label
 
-    set state.project_icon is "folder_info"
+    set state.project_icon is "folder"
+    set state.project_icon_color is ""
+    try:
+      let current_project_icon_color is project.icon_color
+      if current_project_icon_color is not "":
+        set state.project_icon_color is current_project_icon_color
+    with catch err:
+      set state.project_icon_color is state.project_icon_color
+    if state.project_icon_color is "":
+      set state.project_icon_color is "white"
 
     delete "Project" where id is project.id
     create "Project" with map:
       "id" is project.id
       "name" is project.name
       "icon" is state.project_icon
+      "icon_color" is state.project_icon_color
       "active" is state.is_active
       "status_label" is state.status_label
     as project_stat_row
@@ -73,9 +99,10 @@ flow "ensure_projects": requires true
     create "Project" with map:
       "id" is "default"
       "name" is "Default Project"
-      "icon" is "folder_info"
+      "icon" is "folder"
+      "icon_color" is "white"
       "active" is true
-      "status_label" is "Active • Empty"
+      "status_label" is "Active - Empty"
     as default_project
 
     set state.active_project_id is "default"
@@ -176,7 +203,8 @@ flow "create_project": requires true
   create "Project" with map:
     "id" is state.new_project_id
     "name" is state.new_project_name
-    "icon" is "folder_info"
+    "icon" is "folder"
+    "icon_color" is "white"
     "active" is false
     "status_label" is "Empty"
   as new_project
@@ -261,7 +289,8 @@ flow "duplicate_project": requires true
   create "Project" with map:
     "id" is state.duplicate_project_id
     "name" is state.duplicate_project_name
-    "icon" is "folder_info"
+    "icon" is "folder"
+    "icon_color" is "white"
     "active" is false
     "status_label" is "Empty"
   as duplicated_project
@@ -296,11 +325,32 @@ flow "duplicate_project": requires true
     "status" is "ok"
 
 flow "share_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
   set state.shared_project_id is ""
   try:
     let row_project_id is input.row.id
     if row_project_id is not "":
       set state.shared_project_id is row_project_id
+  with catch err:
+    set state.shared_project_id is state.shared_project_id
+
+  try:
+    let direct_project_id is input.project_id
+    if state.shared_project_id is "":
+      if direct_project_id is not "":
+        set state.shared_project_id is direct_project_id
+  with catch err:
+    set state.shared_project_id is state.shared_project_id
+
+  try:
+    let direct_id is input.id
+    if state.shared_project_id is "":
+      if direct_id is not "":
+        set state.shared_project_id is direct_id
   with catch err:
     set state.shared_project_id is state.shared_project_id
 
@@ -328,11 +378,32 @@ flow "share_project": requires true
     "status" is "pending"
 
 flow "archive_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
   set state.archived_project_id is ""
   try:
     let row_project_id is input.row.id
     if row_project_id is not "":
       set state.archived_project_id is row_project_id
+  with catch err:
+    set state.archived_project_id is state.archived_project_id
+
+  try:
+    let direct_project_id is input.project_id
+    if state.archived_project_id is "":
+      if direct_project_id is not "":
+        set state.archived_project_id is direct_project_id
+  with catch err:
+    set state.archived_project_id is state.archived_project_id
+
+  try:
+    let direct_id is input.id
+    if state.archived_project_id is "":
+      if direct_id is not "":
+        set state.archived_project_id is direct_id
   with catch err:
     set state.archived_project_id is state.archived_project_id
 
@@ -421,12 +492,24 @@ flow "rename_active_project": requires true
       "status" is "not_found"
 
   let target_project is list get project_results at 0
-  set state.rename_project_icon is "folder_info"
+  set state.rename_project_icon is target_project.icon
+  if state.rename_project_icon is "":
+    set state.rename_project_icon is "folder"
+  set state.rename_project_icon_color is ""
+  try:
+    let target_project_icon_color is target_project.icon_color
+    if target_project_icon_color is not "":
+      set state.rename_project_icon_color is target_project_icon_color
+  with catch err:
+    set state.rename_project_icon_color is state.rename_project_icon_color
+  if state.rename_project_icon_color is "":
+    set state.rename_project_icon_color is "white"
   delete "Project" where id is state.rename_target_project_id
   create "Project" with map:
     "id" is state.rename_target_project_id
     "name" is state.rename_project_name
     "icon" is state.rename_project_icon
+    "icon_color" is state.rename_project_icon_color
     "active" is target_project.active
     "status_label" is target_project.status_label
   as renamed_project
@@ -507,10 +590,19 @@ flow "set_active_project": requires true
     output:
       status
 
+  find "ProjectKnowledgeItem" where project_id is state.target_project_id
+  let project_file_count is list length of projectknowledgeitem_results
+  set state.project_file_summary is "No files in this project yet."
+  if project_file_count is 1:
+    set state.project_file_summary is "1 file is visible in Project Files."
+  else:
+    if project_file_count is greater than 1:
+      set state.project_file_summary is "Multiple files are visible in Project Files."
+
   delete "Notice" where true
   create "Notice" with map:
     "id" is "current"
-    "message" is "Active project set to " + target_project.name + ". Add files from Library to route them here."
+    "message" is "Opened " + target_project.name + ". " + state.project_file_summary
   as notice_active_project
 
   return map:

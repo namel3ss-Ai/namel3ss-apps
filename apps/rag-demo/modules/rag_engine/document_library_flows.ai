@@ -181,6 +181,8 @@ flow "sync_library": requires true
   with catch err:
     set state.upload_entries is state.upload_entries
 
+  set state.uploads.project_files is list:
+
   try:
     let raw_question_uploads is state.uploads.question_files
     try:
@@ -239,6 +241,8 @@ flow "sync_library": requires true
           set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
   with catch err:
     set state.upload_entries is state.upload_entries
+
+  set state.uploads.question_files is list:
 
   let upload_count is list length of state.upload_entries
   if upload_count is 0:
@@ -494,17 +498,29 @@ flow "sync_library": requires true
       "in_active_project" is state.in_active_project
     as library_item
 
-    if state.in_active_project is true:
+  find "ProjectBinding" where true
+  for each binding in projectbinding_results:
+    find "DocumentLibrary" where upload_id is binding.upload_id
+    let binding_doc_count is list length of documentlibrary_results
+    if binding_doc_count is greater than 0:
+      let binding_doc is list get documentlibrary_results at 0
+      find "Project" where id is binding.project_id
+      set state.binding_project_name is binding.project_id
+      let binding_project_count is list length of project_results
+      if binding_project_count is greater than 0:
+        let binding_project is list get project_results at 0
+        set state.binding_project_name is binding_project.name
       create "ProjectKnowledgeItem" with map:
-        "id" is doc.id
-        "project_id" is state.active_project_id
-        "upload_id" is doc.upload_id
-        "document_id" is doc.document_id
-        "source_name" is doc.source_name
-        "source_type" is doc.source_type
-        "status" is doc.status
-        "status_label" is doc.status_label
-        "scope_label" is "Upload -> Library -> " + state.active_project_name + " | " + doc.scope_label
+        "id" is binding.project_id + "::" + binding_doc.id
+        "project_id" is binding.project_id
+        "project_name" is state.binding_project_name
+        "upload_id" is binding_doc.upload_id
+        "document_id" is binding_doc.document_id
+        "source_name" is binding_doc.source_name
+        "source_type" is binding_doc.source_type
+        "status" is binding_doc.status
+        "status_label" is binding_doc.status_label
+        "scope_label" is "Upload -> Library -> " + state.binding_project_name + " | " + binding_doc.scope_label
       as project_item
 
   let project_status is call flow "rag_engine.refresh_project_stats":
