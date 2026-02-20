@@ -1,0 +1,111 @@
+flow "open_citation": requires true
+  set state.source_id is ""
+  set state.preview_title is "Source preview"
+  set state.preview_chunk_id is ""
+  set state.preview_document_id is ""
+  set state.preview_page_number is 1
+  set state.preview_snippet is ""
+
+  try:
+    let row_source_id is input.row.source_id
+    if row_source_id is not "":
+      set state.source_id is row_source_id
+  with catch err:
+    set state.source_id is state.source_id
+
+  try:
+    let row_source_name is input.row.source_name
+    if row_source_name is not "":
+      set state.preview_title is row_source_name
+  with catch err:
+    set state.preview_title is state.preview_title
+
+  try:
+    let row_chunk_id is input.row.chunk_id
+    if row_chunk_id is not "":
+      set state.preview_chunk_id is row_chunk_id
+  with catch err:
+    set state.preview_chunk_id is state.preview_chunk_id
+
+  try:
+    let row_document_id is input.row.document_id
+    if row_document_id is not "":
+      set state.preview_document_id is row_document_id
+  with catch err:
+    set state.preview_document_id is state.preview_document_id
+
+  try:
+    let row_page_number is input.row.page_number
+    if row_page_number is greater than 0:
+      set state.preview_page_number is row_page_number
+  with catch err:
+    set state.preview_page_number is state.preview_page_number
+
+  try:
+    let row_snippet is input.row.snippet
+    if row_snippet is not "":
+      set state.preview_snippet is row_snippet
+  with catch err:
+    set state.preview_snippet is state.preview_snippet
+
+  if state.source_id is "":
+    find "CitationCard" where true
+    let citation_count is list length of citationcard_results
+    if citation_count is greater than 0:
+      let first_citation is list get citationcard_results at 0
+      set state.source_id is first_citation.source_id
+      set state.preview_title is first_citation.source_name
+      set state.preview_chunk_id is first_citation.chunk_id
+      set state.preview_document_id is first_citation.document_id
+      set state.preview_page_number is first_citation.page_number
+      set state.preview_snippet is first_citation.snippet
+
+  if state.source_id is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "Select a citation with available source metadata."
+    as notice_missing_citation
+    return "missing_citation"
+
+  if state.preview_chunk_id is "":
+    set state.preview_chunk_id is state.source_id
+  if state.preview_document_id is "":
+    set state.preview_document_id is state.source_id
+
+  set state.ui.preview_source is map:
+    "title" is state.preview_title
+    "source_id" is state.source_id
+    "chunk_id" is state.preview_chunk_id
+    "document_id" is state.preview_document_id
+    "page_number" is state.preview_page_number
+    "snippet" is state.preview_snippet
+
+  set state.selected_citation_source is state.source_id
+  set state.drawer with:
+    has_selection is true
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source context updated."
+  as notice_open_citation
+
+  return "ok"
+
+flow "clear_sources_drawer": requires true
+  set state.selected_citation_source is ""
+  set state.ui.preview_source is map:
+    "title" is "Source preview"
+    "source_id" is ""
+    "error" is "Select a citation to open preview."
+  set state.drawer with:
+    has_selection is false
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source drawer cleared."
+  as notice_clear_drawer
+
+  return "ok"

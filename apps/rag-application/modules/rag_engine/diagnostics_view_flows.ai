@@ -1,0 +1,332 @@
+contract flow "rag_engine.initialize_defaults":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_diagnostics_view":
+  input:
+  output:
+    status is text
+
+flow "set_diagnostics_mode_semantic": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.diagnostics with:
+    mode is "semantic"
+    source_filter is state.diagnostics.source_filter
+    tag_filter is state.diagnostics.tag_filter
+    score_min is state.diagnostics.score_min
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_diagnostics_mode_lexical": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.diagnostics with:
+    mode is "lexical"
+    source_filter is state.diagnostics.source_filter
+    tag_filter is state.diagnostics.tag_filter
+    score_min is state.diagnostics.score_min
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_diagnostics_mode_final": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.diagnostics with:
+    mode is "final"
+    source_filter is state.diagnostics.source_filter
+    tag_filter is state.diagnostics.tag_filter
+    score_min is state.diagnostics.score_min
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_diagnostics_source_filter": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.source_filter_value is ""
+  try:
+    let source_value is input.value
+    set state.source_filter_value is source_value
+  with catch err:
+    set state.source_filter_value is state.source_filter_value
+
+  try:
+    let source_row_value is input.row.source_id
+    if state.source_filter_value is "":
+      set state.source_filter_value is source_row_value
+  with catch err:
+    set state.source_filter_value is state.source_filter_value
+
+  set state.diagnostics with:
+    mode is state.diagnostics.mode
+    source_filter is state.source_filter_value
+    tag_filter is state.diagnostics.tag_filter
+    score_min is state.diagnostics.score_min
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_diagnostics_tag_filter": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.tag_filter_value is ""
+  try:
+    let tag_value is input.value
+    set state.tag_filter_value is tag_value
+  with catch err:
+    set state.tag_filter_value is state.tag_filter_value
+
+  try:
+    let tag_row_value is input.row.tag
+    if state.tag_filter_value is "":
+      set state.tag_filter_value is tag_row_value
+  with catch err:
+    set state.tag_filter_value is state.tag_filter_value
+
+  set state.diagnostics with:
+    mode is state.diagnostics.mode
+    source_filter is state.diagnostics.source_filter
+    tag_filter is state.tag_filter_value
+    score_min is state.diagnostics.score_min
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "set_diagnostics_score_min": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  set state.score_min_value is state.diagnostics.score_min
+  try:
+    let score_value is input.value
+    set state.score_min_value is score_value
+  with catch err:
+    set state.score_min_value is state.score_min_value
+
+  if state.score_min_value is less than 0:
+    set state.score_min_value is 0
+  if state.score_min_value is greater than 200:
+    set state.score_min_value is 200
+
+  set state.diagnostics with:
+    mode is state.diagnostics.mode
+    source_filter is state.diagnostics.source_filter
+    tag_filter is state.diagnostics.tag_filter
+    score_min is state.score_min_value
+
+  let diagnostics_status is call flow "rag_engine.refresh_diagnostics_view":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "refresh_diagnostics_view": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  delete "RetrievalCandidateView" where true
+
+  find "Question" where true
+  let query_count is list length of question_results
+  if query_count is 0:
+    return map:
+      "status" is "no_query"
+
+  let latest_query is list get question_results at query_count - 1
+
+  set state.diagnostics_mode is "final"
+  try:
+    let diagnostics_mode_value is state.diagnostics.mode
+    if diagnostics_mode_value is not "":
+      set state.diagnostics_mode is diagnostics_mode_value
+  with catch err:
+    set state.diagnostics_mode is state.diagnostics_mode
+
+  set state.source_filter is ""
+  try:
+    let diagnostics_source_filter is state.diagnostics.source_filter
+    set state.source_filter is diagnostics_source_filter
+  with catch err:
+    set state.source_filter is state.source_filter
+
+  set state.tag_filter is ""
+  try:
+    let diagnostics_tag_filter is state.diagnostics.tag_filter
+    set state.tag_filter is diagnostics_tag_filter
+  with catch err:
+    set state.tag_filter is state.tag_filter
+
+  set state.score_min is 0
+  try:
+    let diagnostics_score_min is state.diagnostics.score_min
+    set state.score_min is diagnostics_score_min
+  with catch err:
+    set state.score_min is state.score_min
+
+  find "RetrievalCandidate" where query_id is latest_query.id and mode is state.diagnostics_mode
+  let candidates is retrievalcandidate_results
+
+  set state.filtered_candidates is list:
+  for each candidate in candidates:
+    set state.include_candidate is true
+
+    if state.source_filter is not "":
+      if candidate.source_id is not state.source_filter:
+        set state.include_candidate is false
+
+    if state.tag_filter is not "":
+      if candidate.tag is not state.tag_filter:
+        set state.include_candidate is false
+
+    if candidate.merged_score is less than state.score_min:
+      set state.include_candidate is false
+
+    if state.include_candidate is true:
+      set state.filtered_candidates is list append state.filtered_candidates with candidate
+
+  order state.filtered_candidates by rank from lowest to highest
+
+  set state.display_rank is 0
+  for each candidate in state.filtered_candidates:
+    set state.display_rank is state.display_rank + 1
+    create "RetrievalCandidateView" with map:
+      "query_id" is candidate.query_id
+      "mode" is candidate.mode
+      "display_rank" is state.display_rank
+      "rank" is candidate.rank
+      "chunk_id" is candidate.chunk_id
+      "source_name" is candidate.source_name
+      "source_id" is candidate.source_id
+      "tag" is candidate.tag
+      "tier" is candidate.tier
+      "lexical_hits" is candidate.lexical_hits
+      "source_weight" is candidate.source_weight
+      "merged_score" is candidate.merged_score
+      "selected" is candidate.selected
+      "reason" is candidate.reason
+    as candidate_view
+
+  return map:
+    "status" is "ok"
+
+flow "refresh_index_summary": requires true
+  delete "IndexSummary" where true
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+
+  set state.total_documents is list length of docs
+  set state.ready_documents is 0
+  set state.queued_documents is 0
+  set state.ingesting_documents is 0
+  set state.failed_documents is 0
+
+  set state.tag_product_count is 0
+  set state.tag_policy_count is 0
+  set state.tag_general_count is 0
+  set state.tag_custom_count is 0
+
+  for each doc in docs:
+    if doc.status is "indexed":
+      set state.ready_documents is state.ready_documents + 1
+    else:
+      if doc.status is "indexing":
+        set state.ingesting_documents is state.ingesting_documents + 1
+      else:
+        if doc.status is "failed":
+          set state.failed_documents is state.failed_documents + 1
+        else:
+          set state.queued_documents is state.queued_documents + 1
+
+    if doc.primary_tag is "product":
+      set state.tag_product_count is state.tag_product_count + 1
+    else:
+      if doc.primary_tag is "policy":
+        set state.tag_policy_count is state.tag_policy_count + 1
+      else:
+        if doc.primary_tag is "general":
+          set state.tag_general_count is state.tag_general_count + 1
+        else:
+          set state.tag_custom_count is state.tag_custom_count + 1
+
+  set state.chunk_count is 0
+  try:
+    let existing_index is state.index
+    let chunks is map get existing_index key "chunks"
+    set state.chunk_count is list length of chunks
+  with catch err:
+    set state.chunk_count is 0
+
+  set state.tag_breakdown is "See tag counters in this summary row."
+  set state.summary_headline is "Deterministic index summary"
+  set state.summary_status_line is "Use numeric fields for document/chunk/tag counts."
+
+  create "IndexSummary" with map:
+    "id" is "current"
+    "headline" is state.summary_headline
+    "status_line" is state.summary_status_line
+    "total_documents" is state.total_documents
+    "ready_documents" is state.ready_documents
+    "queued_documents" is state.queued_documents
+    "ingesting_documents" is state.ingesting_documents
+    "failed_documents" is state.failed_documents
+    "chunk_count" is state.chunk_count
+    "tag_breakdown" is state.tag_breakdown
+    "tag_product_count" is state.tag_product_count
+    "tag_policy_count" is state.tag_policy_count
+    "tag_general_count" is state.tag_general_count
+    "tag_custom_count" is state.tag_custom_count
+  as summary_row
+
+  return map:
+    "status" is "ok"

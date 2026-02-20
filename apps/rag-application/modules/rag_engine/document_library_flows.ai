@@ -1,0 +1,1501 @@
+contract flow "rag_engine.initialize_defaults":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.seed_examples":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.ensure_projects":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_project_stats":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.ingest_selected":
+  input:
+  output:
+    status is text
+
+flow "sync_library": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  let examples_status is call flow "rag_engine.seed_examples":
+    input:
+    output:
+      status
+
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.upload_entries is list:
+  set state.project_origin_upload_ids is list:
+  set state.question_origin_upload_ids is list:
+  set state.new_upload_count is 0
+  set state.auto_assigned_count is 0
+
+  try:
+    let raw_uploads is state.uploads.documents
+    try:
+      for each upload_entry in raw_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+    with catch err:
+      let upload_keys is map keys raw_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+  with catch err:
+    set state.upload_entries is state.upload_entries
+
+  try:
+    let raw_chat_uploads is state.uploads.chat_files
+    try:
+      for each upload_entry in raw_chat_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
+    with catch err:
+      let upload_keys is map keys raw_chat_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_chat_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
+  with catch err:
+    set state.upload_entries is state.upload_entries
+
+  try:
+    let raw_project_uploads is state.uploads.project_files
+    try:
+      for each upload_entry in raw_project_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.project_origin_upload_ids is list append state.project_origin_upload_ids with state.origin_upload_id
+    with catch err:
+      let upload_keys is map keys raw_project_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_project_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.project_origin_upload_ids is list append state.project_origin_upload_ids with state.origin_upload_id
+  with catch err:
+    set state.upload_entries is state.upload_entries
+
+  set state.uploads.project_files is list:
+
+  try:
+    let raw_question_uploads is state.uploads.question_files
+    try:
+      for each upload_entry in raw_question_uploads:
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
+    with catch err:
+      let upload_keys is map keys raw_question_uploads
+      for each upload_key in upload_keys:
+        let upload_entry is map get raw_question_uploads key upload_key
+        set state.upload_entries is list append state.upload_entries with upload_entry
+        set state.origin_upload_id is ""
+        try:
+          let maybe_id is upload_entry.id
+          if maybe_id is not "":
+            set state.origin_upload_id is maybe_id
+        with catch err:
+          set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_checksum is upload_entry.checksum
+            if maybe_checksum is not "":
+              set state.origin_upload_id is maybe_checksum
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is "":
+          try:
+            let maybe_name is upload_entry.name
+            if maybe_name is not "":
+              set state.origin_upload_id is maybe_name
+          with catch err:
+            set state.origin_upload_id is state.origin_upload_id
+        if state.origin_upload_id is not "":
+          set state.question_origin_upload_ids is list append state.question_origin_upload_ids with state.origin_upload_id
+  with catch err:
+    set state.upload_entries is state.upload_entries
+
+  set state.uploads.question_files is list:
+
+  let upload_count is list length of state.upload_entries
+  if upload_count is 0:
+    find "DocumentLibrary" where true
+    let doc_count is list length of documentlibrary_results
+    if doc_count is 0:
+      set state.recovered_chunks is list:
+      try:
+        let current_index is state.index
+        let maybe_chunks is map get current_index key "chunks"
+        set state.recovered_chunks is maybe_chunks
+      with catch err:
+        set state.recovered_chunks is list:
+
+      set state.recovered_upload_ids is list:
+      for each recovered_chunk in state.recovered_chunks:
+        set state.recovered_upload_id is ""
+        try:
+          let maybe_upload_id is recovered_chunk.upload_id
+          if maybe_upload_id is not "":
+            set state.recovered_upload_id is maybe_upload_id
+        with catch err:
+          set state.recovered_upload_id is state.recovered_upload_id
+
+        if state.recovered_upload_id is not "":
+          set state.already_recovered is false
+          for each seen_upload_id in state.recovered_upload_ids:
+            if seen_upload_id is state.recovered_upload_id:
+              set state.already_recovered is true
+
+          if state.already_recovered is false:
+            set state.recovered_upload_ids is list append state.recovered_upload_ids with state.recovered_upload_id
+            set state.recovered_source_name is state.recovered_upload_id
+            try:
+              let maybe_source_name is recovered_chunk.source_name
+              if maybe_source_name is not "":
+                set state.recovered_source_name is maybe_source_name
+            with catch err:
+              set state.recovered_source_name is state.recovered_source_name
+
+            set state.recovered_quality is "pass"
+            try:
+              let maybe_low_quality is recovered_chunk.low_quality
+              if maybe_low_quality is true:
+                set state.recovered_quality is "warn"
+            with catch err:
+              set state.recovered_quality is state.recovered_quality
+
+            create "DocumentLibrary" with map:
+              "id" is state.recovered_upload_id
+              "upload_id" is state.recovered_upload_id
+              "document_id" is state.recovered_upload_id
+              "source_name" is state.recovered_source_name
+              "source_type" is "PDF"
+              "status" is "indexed"
+              "ingestion_stage" is "indexed"
+              "progress_percent" is 100
+              "quality" is state.recovered_quality
+              "selected" is true
+              "status_label" is "Indexed • Recovered"
+              "scope_label" is "general • priority"
+              "weight" is 1
+              "tags" is list: "general"
+              "primary_tag" is "general"
+              "quality_note" is "Recovered from persisted index chunks."
+              "last_error" is ""
+            as recovered_doc
+
+      let recovered_count is list length of state.recovered_upload_ids
+      if recovered_count is greater than 0:
+        delete "Notice" where true
+        create "Notice" with map:
+          "id" is "current"
+          "message" is "Recovered indexed sources from persisted state."
+        as notice_recovered
+        let summary_status is call flow "rag_engine.refresh_index_summary":
+          input:
+          output:
+            status
+        let project_status is call flow "rag_engine.refresh_project_stats":
+          input:
+          output:
+            status
+
+      delete "Notice" where true
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Add documents or load the sample corpus to begin."
+      as notice_empty
+      delete "ProjectKnowledgeItem" where true
+      delete "LibraryItem" where true
+      let summary_status is call flow "rag_engine.refresh_index_summary":
+        input:
+        output:
+          status
+      let project_status is call flow "rag_engine.refresh_project_stats":
+        input:
+        output:
+          status
+      return map:
+        "status" is "no_upload"
+
+  for each file in state.upload_entries:
+    set state.upload_id is ""
+
+    try:
+      let maybe_id is file.id
+      if maybe_id is not "":
+        set state.upload_id is maybe_id
+    with catch err:
+      set state.upload_id is state.upload_id
+
+    if state.upload_id is "":
+      try:
+        let maybe_checksum is file.checksum
+        if maybe_checksum is not "":
+          set state.upload_id is maybe_checksum
+      with catch err:
+        set state.upload_id is state.upload_id
+
+    if state.upload_id is "":
+      try:
+        let maybe_name_for_id is file.name
+        if maybe_name_for_id is not "":
+          set state.upload_id is maybe_name_for_id
+      with catch err:
+        set state.upload_id is state.upload_id
+
+    if state.upload_id is "":
+      set state.upload_id is "unknown-upload"
+
+    set state.upload_origin is "library"
+    for each project_origin_upload_id in state.project_origin_upload_ids:
+      if project_origin_upload_id is state.upload_id:
+        set state.upload_origin is "project"
+    for each question_origin_upload_id in state.question_origin_upload_ids:
+      if question_origin_upload_id is state.upload_id:
+        set state.upload_origin is "question"
+
+    find "DocumentLibrary" where upload_id is state.upload_id
+    let existing_count is list length of documentlibrary_results
+    if existing_count is 0:
+      set state.source_name is state.upload_id
+      try:
+        let maybe_name is file.name
+        if maybe_name is not "":
+          set state.source_name is maybe_name
+      with catch err:
+        set state.source_name is state.source_name
+
+      set state.source_type is "Text"
+      try:
+        let maybe_type is file.type
+        if maybe_type is "application/pdf":
+          set state.source_type is "PDF"
+        else:
+          if maybe_type is "text/plain":
+            set state.source_type is "Text"
+          else:
+            if maybe_type is not "":
+              set state.source_type is maybe_type
+      with catch err:
+        set state.source_type is state.source_type
+
+      create "DocumentLibrary" with map:
+        "id" is state.upload_id
+        "upload_id" is state.upload_id
+        "document_id" is state.upload_id
+        "source_name" is state.source_name
+        "source_type" is state.source_type
+        "status" is "uploaded"
+        "ingestion_stage" is "queued"
+        "progress_percent" is 0
+        "quality" is "pending"
+        "selected" is true
+        "status_label" is "Queued • " + state.source_type
+        "scope_label" is "general • priority 1"
+        "weight" is 1
+        "tags" is list: "general"
+        "primary_tag" is "general"
+        "quality_note" is "Upload synced. Re-index to make this source searchable."
+        "last_error" is ""
+      as library_row
+      set state.new_upload_count is state.new_upload_count + 1
+
+    if state.upload_origin is "project" or state.upload_origin is "question":
+      if state.active_project_id is not "":
+        find "ProjectBinding" where id is state.active_project_id + "::" + state.upload_id
+        let auto_binding_count is list length of projectbinding_results
+        if auto_binding_count is 0:
+          create "ProjectBinding" with map:
+            "id" is state.active_project_id + "::" + state.upload_id
+            "project_id" is state.active_project_id
+            "upload_id" is state.upload_id
+          as auto_binding
+          set state.auto_assigned_count is state.auto_assigned_count + 1
+
+  find "DocumentLibrary" where true
+  set state.known_upload_ids is list:
+  for each doc in documentlibrary_results:
+    set state.known_upload_ids is list append state.known_upload_ids with doc.upload_id
+
+  find "ProjectBinding" where true
+  for each binding in projectbinding_results:
+    set state.keep_binding is false
+    for each known_upload_id in state.known_upload_ids:
+      if known_upload_id is binding.upload_id:
+        set state.keep_binding is true
+    if state.keep_binding is false:
+      delete "ProjectBinding" where id is binding.id
+
+  if state.new_upload_count is greater than 0:
+    let auto_ingest_status is call flow "rag_engine.ingest_selected":
+      input:
+      output:
+        status
+
+  delete "ProjectKnowledgeItem" where true
+  delete "LibraryItem" where true
+
+  find "Project" where id is state.active_project_id
+  set state.active_project_name is state.active_project_id
+  let active_project_count is list length of project_results
+  if active_project_count is greater than 0:
+    let active_project is list get project_results at 0
+    set state.active_project_name is active_project.name
+
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
+  find "DocumentLibrary" where true
+  for each doc in documentlibrary_results:
+    set state.in_active_project is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.in_active_project is true
+
+    set state.membership_label is "Upload -> Library (not in active project)"
+    if state.in_active_project is true:
+      set state.membership_label is "Upload -> Library -> " + state.active_project_name
+
+    create "LibraryItem" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "status_label" is doc.status_label
+      "membership_label" is state.membership_label
+      "in_active_project" is state.in_active_project
+    as library_item
+
+  find "ProjectBinding" where true
+  for each binding in projectbinding_results:
+    find "DocumentLibrary" where upload_id is binding.upload_id
+    let binding_doc_count is list length of documentlibrary_results
+    if binding_doc_count is greater than 0:
+      let binding_doc is list get documentlibrary_results at 0
+      find "Project" where id is binding.project_id
+      set state.binding_project_name is binding.project_id
+      let binding_project_count is list length of project_results
+      if binding_project_count is greater than 0:
+        let binding_project is list get project_results at 0
+        set state.binding_project_name is binding_project.name
+      create "ProjectKnowledgeItem" with map:
+        "id" is binding.project_id + "::" + binding_doc.id
+        "project_id" is binding.project_id
+        "project_name" is state.binding_project_name
+        "upload_id" is binding_doc.upload_id
+        "document_id" is binding_doc.document_id
+        "source_name" is binding_doc.source_name
+        "source_type" is binding_doc.source_type
+        "status" is binding_doc.status
+        "status_label" is binding_doc.status_label
+        "scope_label" is "Upload -> Library -> " + state.binding_project_name + " | " + binding_doc.scope_label
+      as project_item
+
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  if state.new_upload_count is greater than 0:
+    if state.auto_assigned_count is greater than 0:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Uploads synced and indexed. Project and question uploads were assigned to " + state.active_project_name + "."
+      as notice_synced_indexed_assigned
+    else:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Uploads synced to Library and indexed. Next: assign needed files to " + state.active_project_name + " and ask in chat."
+      as notice_synced_indexed
+  else:
+    if state.auto_assigned_count is greater than 0:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Knowledge synced. New uploads were assigned to " + state.active_project_name + " automatically."
+      as notice_synced_assigned
+    else:
+      create "Notice" with map:
+        "id" is "current"
+        "message" is "Library synced. File path labels show routing from upload to project."
+      as notice_synced
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "select_document": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    set state.selected is false
+    if doc.upload_id is selected_upload_id:
+      set state.selected is true
+
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is state.selected
+      "status_label" is doc.status_label
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as focused_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Focused selection on one source."
+  as notice_focus
+
+  return selected_upload_id
+
+flow "add_document_selection": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is selected_upload_id
+  let found_count is list length of documentlibrary_results
+  if found_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is selected_upload_id
+
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is true
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as selected_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source added to active retrieval scope."
+  as notice_add
+
+  return selected_upload_id
+
+flow "remove_document_selection": requires true
+  try:
+    let selected_upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is selected_upload_id
+  let found_count is list length of documentlibrary_results
+  if found_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is selected_upload_id
+
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is false
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as unselected_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source removed from active retrieval scope."
+  as notice_remove
+
+  return selected_upload_id
+
+flow "rename_document": requires true
+  set state.rename_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.rename_upload_id is row_upload_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let row_source_id is input.row.source_id
+    if state.rename_upload_id is "":
+      if row_source_id is not "":
+        set state.rename_upload_id is row_source_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let row_document_id is input.row.document_id
+    if state.rename_upload_id is "":
+      if row_document_id is not "":
+        set state.rename_upload_id is row_document_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.rename_upload_id is "":
+      if direct_upload_id is not "":
+        set state.rename_upload_id is direct_upload_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let direct_source_id is input.source_id
+    if state.rename_upload_id is "":
+      if direct_source_id is not "":
+        set state.rename_upload_id is direct_source_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  try:
+    let direct_document_id is input.document_id
+    if state.rename_upload_id is "":
+      if direct_document_id is not "":
+        set state.rename_upload_id is direct_document_id
+  with catch err:
+    set state.rename_upload_id is state.rename_upload_id
+
+  if state.rename_upload_id is "":
+    return "missing_document"
+
+  set state.rename_source_name is ""
+  try:
+    let requested_source_name is input.source_name
+    if requested_source_name is not "":
+      set state.rename_source_name is requested_source_name
+  with catch err:
+    set state.rename_source_name is state.rename_source_name
+
+  try:
+    let requested_file_name is input.file_name
+    if state.rename_source_name is "":
+      if requested_file_name is not "":
+        set state.rename_source_name is requested_file_name
+  with catch err:
+    set state.rename_source_name is state.rename_source_name
+
+  try:
+    let requested_name is input.name
+    if state.rename_source_name is "":
+      if requested_name is not "":
+        set state.rename_source_name is requested_name
+  with catch err:
+    set state.rename_source_name is state.rename_source_name
+
+  if state.rename_source_name is "":
+    delete "Notice" where true
+    create "Notice" with map:
+      "id" is "current"
+      "message" is "File name can't be empty."
+    as notice_document_rename_empty
+    return "missing_name"
+
+  find "DocumentLibrary" where upload_id is state.rename_upload_id
+  let rename_doc_count is list length of documentlibrary_results
+  if rename_doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  delete "DocumentLibrary" where upload_id is state.rename_upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is state.rename_source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is doc.scope_label
+    "weight" is doc.weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as renamed_doc
+
+  try:
+    let existing_chunks is state.index.chunks
+    set state.renamed_chunks is list:
+    for each chunk in existing_chunks:
+      set state.next_source_name is chunk.source_name
+      if chunk.upload_id is state.rename_upload_id:
+        set state.next_source_name is state.rename_source_name
+      set state.renamed_chunk with:
+        chunk_id is chunk.chunk_id
+        upload_id is chunk.upload_id
+        document_id is chunk.document_id
+        source_name is state.next_source_name
+        page_number is chunk.page_number
+        chunk_index is chunk.chunk_index
+        ingestion_phase is chunk.ingestion_phase
+        text is chunk.text
+        keywords is chunk.keywords
+      set state.renamed_chunks is list append state.renamed_chunks with state.renamed_chunk
+    set state.index with:
+      chunks is state.renamed_chunks
+  with catch err:
+    set state.index is state.index
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Renamed file to " + state.rename_source_name + "."
+  as notice_document_renamed
+
+  return "ok"
+
+flow "add_document_to_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.target_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.target_upload_id is row_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.target_upload_id is "":
+      if direct_upload_id is not "":
+        set state.target_upload_id is direct_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  if state.target_upload_id is "":
+    return "missing_document"
+
+  set state.target_project_id is state.active_project_id
+  try:
+    let requested_project_id is input.project_id
+    if requested_project_id is not "":
+      set state.target_project_id is requested_project_id
+  with catch err:
+    set state.target_project_id is state.target_project_id
+
+  if state.target_project_id is "":
+    return "missing_project"
+
+  find "Project" where id is state.target_project_id
+  let project_count is list length of project_results
+  if project_count is 0:
+    return "project_not_found"
+  let target_project is list get project_results at 0
+
+  find "DocumentLibrary" where upload_id is state.target_upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  find "ProjectBinding" where id is state.target_project_id + "::" + state.target_upload_id
+  let binding_count is list length of projectbinding_results
+  if binding_count is 0:
+    create "ProjectBinding" with map:
+      "id" is state.target_project_id + "::" + state.target_upload_id
+      "project_id" is state.target_project_id
+      "upload_id" is state.target_upload_id
+    as added_binding
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "File path updated: Upload -> Library -> " + target_project.name + ". Next: run Create Index if content changed."
+  as notice_added_to_project
+
+  return "ok"
+
+flow "move_document_to_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.move_upload_id is ""
+  set state.move_document_id is ""
+  set state.move_source_name is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.move_upload_id is row_upload_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let row_source_id is input.row.source_id
+    if state.move_upload_id is "":
+      if row_source_id is not "":
+        set state.move_upload_id is row_source_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let row_document_id is input.row.document_id
+    if row_document_id is not "":
+      set state.move_document_id is row_document_id
+    if state.move_upload_id is "":
+      if row_document_id is not "":
+        set state.move_upload_id is row_document_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let row_source_name is input.row.source_name
+    if row_source_name is not "":
+      set state.move_source_name is row_source_name
+  with catch err:
+    set state.move_source_name is state.move_source_name
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.move_upload_id is "":
+      if direct_upload_id is not "":
+        set state.move_upload_id is direct_upload_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let direct_source_id is input.source_id
+    if state.move_upload_id is "":
+      if direct_source_id is not "":
+        set state.move_upload_id is direct_source_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let direct_document_id is input.document_id
+    if direct_document_id is not "":
+      set state.move_document_id is direct_document_id
+    if state.move_upload_id is "":
+      if direct_document_id is not "":
+        set state.move_upload_id is direct_document_id
+  with catch err:
+    set state.move_upload_id is state.move_upload_id
+
+  try:
+    let direct_source_name is input.source_name
+    if direct_source_name is not "":
+      set state.move_source_name is direct_source_name
+  with catch err:
+    set state.move_source_name is state.move_source_name
+
+  if state.move_upload_id is "":
+    return "missing_document"
+
+  set state.move_target_project_id is ""
+  try:
+    let requested_project_id is input.project_id
+    if requested_project_id is not "":
+      set state.move_target_project_id is requested_project_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let requested_target_project_id is input.target_project_id
+    if state.move_target_project_id is "":
+      if requested_target_project_id is not "":
+        set state.move_target_project_id is requested_target_project_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let requested_project is input.project
+    if state.move_target_project_id is "":
+      if requested_project is not "":
+        set state.move_target_project_id is requested_project
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let direct_id is input.id
+    if state.move_target_project_id is "":
+      if direct_id is not "":
+        set state.move_target_project_id is direct_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let row_project_id is input.row.project_id
+    if state.move_target_project_id is "":
+      if row_project_id is not "":
+        set state.move_target_project_id is row_project_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  try:
+    let row_id is input.row.id
+    if state.move_target_project_id is "":
+      if row_id is not "":
+        set state.move_target_project_id is row_id
+  with catch err:
+    set state.move_target_project_id is state.move_target_project_id
+
+  if state.move_target_project_id is "":
+    set state.move_target_project_id is state.active_project_id
+
+  if state.move_target_project_id is "":
+    return "missing_project"
+
+  find "Project" where id is state.move_target_project_id
+  let move_target_count is list length of project_results
+  if move_target_count is 0:
+    return "project_not_found"
+
+  find "DocumentLibrary" where upload_id is state.move_upload_id
+  let move_doc_count is list length of documentlibrary_results
+  if move_doc_count is 0:
+    if state.move_document_id is not "":
+      find "DocumentLibrary" where document_id is state.move_document_id
+      let move_doc_by_document_count is list length of documentlibrary_results
+      if move_doc_by_document_count is greater than 0:
+        let move_doc_by_document is list get documentlibrary_results at 0
+        set state.move_upload_id is move_doc_by_document.upload_id
+        set move_doc_count is move_doc_by_document_count
+  if move_doc_count is 0:
+    if state.move_source_name is not "":
+      find "DocumentLibrary" where source_name is state.move_source_name
+      let move_doc_by_name_count is list length of documentlibrary_results
+      if move_doc_by_name_count is greater than 0:
+        let move_doc_by_name is list get documentlibrary_results at 0
+        set state.move_upload_id is move_doc_by_name.upload_id
+        set move_doc_count is move_doc_by_name_count
+  if move_doc_count is greater than 0:
+    find "DocumentLibrary" where upload_id is state.move_upload_id
+    set move_doc_count is list length of documentlibrary_results
+  if move_doc_count is 0:
+    return "not_found"
+
+  find "ProjectBinding" where upload_id is state.move_upload_id
+  for each binding in projectbinding_results:
+    if binding.project_id is not state.move_target_project_id:
+      delete "ProjectBinding" where id is binding.id
+
+  find "ProjectBinding" where id is state.move_target_project_id + "::" + state.move_upload_id
+  let existing_target_binding_count is list length of projectbinding_results
+  if existing_target_binding_count is 0:
+    create "ProjectBinding" with map:
+      "id" is state.move_target_project_id + "::" + state.move_upload_id
+      "project_id" is state.move_target_project_id
+      "upload_id" is state.move_upload_id
+    as moved_binding
+
+  set state.active_project_id is state.move_target_project_id
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  find "Project" where id is state.move_target_project_id
+  let moved_target_count is list length of project_results
+  set state.move_target_label is state.move_target_project_id
+  if moved_target_count is greater than 0:
+    let moved_project is list get project_results at 0
+    set state.move_target_label is moved_project.name
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "File moved. New path: Upload -> Library -> " + state.move_target_label + "."
+  as notice_moved_to_project
+
+  return "ok"
+
+flow "remove_document_from_project": requires true
+  let ensured is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  set state.target_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.target_upload_id is row_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.target_upload_id is "":
+      if direct_upload_id is not "":
+        set state.target_upload_id is direct_upload_id
+  with catch err:
+    set state.target_upload_id is state.target_upload_id
+
+  if state.target_upload_id is "":
+    return "missing_document"
+
+  set state.target_project_id is state.active_project_id
+  try:
+    let requested_project_id is input.project_id
+    if requested_project_id is not "":
+      set state.target_project_id is requested_project_id
+  with catch err:
+    set state.target_project_id is state.target_project_id
+
+  if state.target_project_id is "":
+    return "missing_project"
+
+  find "Project" where id is state.target_project_id
+  set state.target_project_name is state.target_project_id
+  let target_project_count is list length of project_results
+  if target_project_count is greater than 0:
+    let target_project is list get project_results at 0
+    set state.target_project_name is target_project.name
+
+  delete "ProjectBinding" where id is state.target_project_id + "::" + state.target_upload_id
+
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "File removed from " + state.target_project_name + ". Path is now Upload -> Library."
+  as notice_removed_from_project
+
+  return "ok"
+
+flow "bulk_select_all": requires true
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    set state.in_active_project is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.in_active_project is true
+
+    set state.next_selected is doc.selected
+    if state.in_active_project is true:
+      set state.next_selected is true
+
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is state.next_selected
+      "status_label" is doc.status_label
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as selected_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "All sources in the active project were selected."
+  as notice_bulk_select
+
+  return "ok"
+
+flow "bulk_clear_selection": requires true
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  find "ProjectBinding" where project_id is state.active_project_id
+  set state.active_project_upload_ids is list:
+  for each binding in projectbinding_results:
+    set state.active_project_upload_ids is list append state.active_project_upload_ids with binding.upload_id
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    set state.in_active_project is false
+    for each active_upload_id in state.active_project_upload_ids:
+      if active_upload_id is doc.upload_id:
+        set state.in_active_project is true
+
+    set state.next_selected is doc.selected
+    if state.in_active_project is true:
+      set state.next_selected is false
+
+    create "DocumentLibrary" with map:
+      "id" is doc.id
+      "upload_id" is doc.upload_id
+      "document_id" is doc.document_id
+      "source_name" is doc.source_name
+      "source_type" is doc.source_type
+      "status" is doc.status
+      "ingestion_stage" is doc.ingestion_stage
+      "progress_percent" is doc.progress_percent
+      "quality" is doc.quality
+      "selected" is state.next_selected
+      "status_label" is doc.status_label
+      "scope_label" is doc.primary_tag + " • priority"
+      "weight" is doc.weight
+      "tags" is doc.tags
+      "primary_tag" is doc.primary_tag
+      "quality_note" is doc.quality_note
+      "last_error" is doc.last_error
+    as cleared_doc
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Selection cleared for the active project."
+  as notice_bulk_clear
+
+  return "ok"
+
+flow "bulk_remove_selected": requires true
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  set state.removed_ids is list:
+  for each doc in docs:
+    if doc.selected is true:
+      set state.removed_ids is list append state.removed_ids with doc.upload_id
+    else:
+      create "DocumentLibrary" with doc as kept_doc
+
+  for each removed_id in state.removed_ids:
+    delete "ProjectBinding" where upload_id is removed_id
+
+  try:
+    let chunks is state.index.chunks
+    set state.kept_chunks is list:
+    for each chunk in chunks:
+      set state.keep_chunk is true
+      for each removed_id in state.removed_ids:
+        if chunk.upload_id is removed_id:
+          set state.keep_chunk is false
+      if state.keep_chunk is true:
+        set state.kept_chunks is list append state.kept_chunks with chunk
+    set state.index with:
+      chunks is state.kept_chunks
+  with catch err:
+    set state.index with:
+      chunks is list:
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Selected sources removed."
+  as notice_bulk_remove
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Selected sources removed."
+  as notice_bulk_remove_done
+
+  return "ok"
+
+flow "remove_document": requires true
+  set state.removed_upload_id is ""
+  try:
+    let row_upload_id is input.row.upload_id
+    if row_upload_id is not "":
+      set state.removed_upload_id is row_upload_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let row_source_id is input.row.source_id
+    if state.removed_upload_id is "":
+      if row_source_id is not "":
+        set state.removed_upload_id is row_source_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let row_document_id is input.row.document_id
+    if state.removed_upload_id is "":
+      if row_document_id is not "":
+        set state.removed_upload_id is row_document_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let direct_upload_id is input.upload_id
+    if state.removed_upload_id is "":
+      if direct_upload_id is not "":
+        set state.removed_upload_id is direct_upload_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let direct_source_id is input.source_id
+    if state.removed_upload_id is "":
+      if direct_source_id is not "":
+        set state.removed_upload_id is direct_source_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  try:
+    let direct_document_id is input.document_id
+    if state.removed_upload_id is "":
+      if direct_document_id is not "":
+        set state.removed_upload_id is direct_document_id
+  with catch err:
+    set state.removed_upload_id is state.removed_upload_id
+
+  if state.removed_upload_id is "":
+    return "missing_document"
+
+  find "DocumentLibrary" where true
+  let docs is documentlibrary_results
+  delete "DocumentLibrary" where true
+
+  for each doc in docs:
+    if doc.upload_id is not state.removed_upload_id:
+      create "DocumentLibrary" with doc as kept_doc
+
+  delete "ProjectBinding" where upload_id is state.removed_upload_id
+
+  try:
+    let chunks is state.index.chunks
+    set state.kept_chunks is list:
+    for each chunk in chunks:
+      if chunk.upload_id is not state.removed_upload_id:
+        set state.kept_chunks is list append state.kept_chunks with chunk
+    set state.index with:
+      chunks is state.kept_chunks
+  with catch err:
+    set state.index with:
+      chunks is list:
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Source removed."
+  as notice_removed
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+  let sync_status is call flow "rag_engine.sync_library":
+    input:
+    output:
+      status
+
+  delete "Notice" where true
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "File deleted from library."
+  as notice_removed_final
+
+  return state.removed_upload_id
+
+flow "increase_document_weight": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  set state.new_weight is doc.weight + 1
+  if state.new_weight is greater than 3:
+    set state.new_weight is 3
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is state.new_weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as weighted_doc
+
+  return "ok"
+
+flow "decrease_document_weight": requires true
+  try:
+    let upload_id is input.row.upload_id
+  with catch err:
+    return "missing_document"
+
+  find "DocumentLibrary" where upload_id is upload_id
+  let doc_count is list length of documentlibrary_results
+  if doc_count is 0:
+    return "not_found"
+
+  let doc is list get documentlibrary_results at 0
+  set state.new_weight is doc.weight - 1
+  if state.new_weight is less than 1:
+    set state.new_weight is 1
+
+  delete "DocumentLibrary" where upload_id is upload_id
+  create "DocumentLibrary" with map:
+    "id" is doc.id
+    "upload_id" is doc.upload_id
+    "document_id" is doc.document_id
+    "source_name" is doc.source_name
+    "source_type" is doc.source_type
+    "status" is doc.status
+    "ingestion_stage" is doc.ingestion_stage
+    "progress_percent" is doc.progress_percent
+    "quality" is doc.quality
+    "selected" is doc.selected
+    "status_label" is doc.status_label
+    "scope_label" is doc.primary_tag + " • priority"
+    "weight" is state.new_weight
+    "tags" is doc.tags
+    "primary_tag" is doc.primary_tag
+    "quality_note" is doc.quality_note
+    "last_error" is doc.last_error
+  as weighted_doc
+
+  return "ok"

@@ -1,0 +1,583 @@
+contract flow "rag_engine.initialize_defaults":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_index_summary":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.ensure_projects":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.refresh_project_stats":
+  input:
+  output:
+    status is text
+
+contract flow "rag_engine.ask_question":
+  input:
+    message is text
+    query_text is text
+    project_scope is text
+    project_scope_label is text
+    project_scope_conflict is boolean
+    document_scope is json
+    document_scope_mode is text
+  output:
+    answer_text is text
+    mode is text
+
+contract flow "rag_engine.seed_sample_corpus":
+  input:
+  output:
+    status is text
+
+flow "seed_examples": requires true
+  find "ExampleQuestion" where true
+  let example_count is list length of examplequestion_results
+  if example_count is 0:
+    create "ExampleQuestion" with map:
+      "id" is 1
+      "query" is "runtime enforces citations"
+      "route" is "definition"
+      "hint" is "Why citations are enforced."
+    as ex_1
+
+    create "ExampleQuestion" with map:
+      "id" is 2
+      "query" is "summarize the strongest evidence"
+      "route" is "summary"
+      "hint" is "Condense top supporting passages."
+    as ex_2
+
+    create "ExampleQuestion" with map:
+      "id" is 3
+      "query" is "compare indexing and retrieval in this corpus"
+      "route" is "comparison"
+      "hint" is "Compare ingestion and retrieval responsibilities."
+    as ex_3
+
+    create "ExampleQuestion" with map:
+      "id" is 4
+      "query" is "what does deterministic replay mean here"
+      "route" is "definition"
+      "hint" is "Explain reproducibility guarantees."
+    as ex_4
+
+  return map:
+    "status" is "ok"
+
+flow "initialize_defaults": requires true
+  try:
+    let existing_bootstrap is state.bootstrap_ready
+    set state.bootstrap_ready is existing_bootstrap
+  with catch err:
+    set state.bootstrap_ready is false
+
+  if state.bootstrap_ready is true:
+    let projects_status is call flow "rag_engine.ensure_projects":
+      input:
+      output:
+        status
+    let project_status is call flow "rag_engine.refresh_project_stats":
+      input:
+      output:
+        status
+    let summary_status is call flow "rag_engine.refresh_index_summary":
+      input:
+      output:
+        status
+    return map:
+      "status" is "ok"
+
+  set state.tag.options is list:
+    map:
+      "id" is "product"
+      "name" is "Product"
+    map:
+      "id" is "policy"
+      "name" is "Policy"
+    map:
+      "id" is "general"
+      "name" is "General"
+
+  try:
+    let active_tags is state.tag.active
+    let active_count is list length of active_tags
+    if active_count is 0:
+      set state.tag.active is list:
+        "product"
+        "policy"
+        "general"
+  with catch err:
+    set state.tag.active is list:
+      "product"
+      "policy"
+      "general"
+
+  set state.retrieval with:
+    semantic_weight is 60
+    semantic_k is 8
+    lexical_k is 8
+    final_top_k is 6
+
+  set state.diagnostics with:
+    mode is "final"
+    source_filter is ""
+    tag_filter is ""
+    score_min is 0
+
+  set state.chat.messages is list:
+  set state.chat.citations is list:
+  set state.loading is false
+
+  set state.answer with:
+    query is ""
+    answer_text is ""
+    citations is list:
+    citation_count is 0
+    trusted is false
+    trust_score is 0
+    trust_label is "No Support"
+    source_count is 0
+    confidence is 0
+    mode is "idle"
+    available is false
+
+  set state.drawer with:
+    has_selection is false
+
+  set state.selected_citation_source is ""
+  set state.ui.preview_source is map:
+    "title" is "Source preview"
+    "source_id" is ""
+    "error" is "Select a citation to open preview."
+
+  try:
+    let raw_uploads is state.uploads.documents
+    set state.uploads.documents is raw_uploads
+  with catch err:
+    set state.uploads.documents is list:
+
+  set state.bootstrap_ready is true
+
+  let projects_status is call flow "rag_engine.ensure_projects":
+    input:
+    output:
+      status
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "seed_sample_corpus": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  delete "DocumentLibrary" where true
+  delete "Question" where true
+  delete "QueryProfile" where true
+  delete "Answer" where true
+  delete "CitationCard" where true
+  delete "RetrievalCandidate" where true
+  delete "RetrievalCandidateView" where true
+  delete "RankingDecision" where true
+  delete "ExplainSummary" where true
+  delete "ExplainCandidate" where true
+  delete "ProjectBinding" where true
+  delete "Notice" where true
+
+  set state.index with:
+    chunks is list:
+      map:
+        "chunk_id" is "sample-product-1"
+        "upload_id" is "sample-product"
+        "document_id" is "sample-product"
+        "source_name" is "Product Manual"
+        "tag" is "product"
+        "page_number" is 1
+        "chunk_index" is 1
+        "ingestion_phase" is "seeded"
+        "text" is "Indexing converts documents into deterministic chunks with stable IDs."
+        "keywords" is list: "indexing", "chunks", "deterministic", "ids"
+      map:
+        "chunk_id" is "sample-product-2"
+        "upload_id" is "sample-product"
+        "document_id" is "sample-product"
+        "source_name" is "Product Manual"
+        "tag" is "product"
+        "page_number" is 2
+        "chunk_index" is 2
+        "ingestion_phase" is "seeded"
+        "text" is "Each chunk stores source metadata for citation cards and source previews."
+        "keywords" is list: "chunk", "metadata", "citation", "preview"
+      map:
+        "chunk_id" is "sample-policy-1"
+        "upload_id" is "sample-policy"
+        "document_id" is "sample-policy"
+        "source_name" is "Policy Handbook"
+        "tag" is "policy"
+        "page_number" is 1
+        "chunk_index" is 1
+        "ingestion_phase" is "seeded"
+        "text" is "Deterministic replay means repeated runs produce the same candidate ordering."
+        "keywords" is list: "deterministic", "replay", "candidate", "ordering"
+      map:
+        "chunk_id" is "sample-policy-2"
+        "upload_id" is "sample-policy"
+        "document_id" is "sample-policy"
+        "source_name" is "Policy Handbook"
+        "tag" is "policy"
+        "page_number" is 2
+        "chunk_index" is 2
+        "ingestion_phase" is "seeded"
+        "text" is "Trust badges are shown only when claims are tied to citations."
+        "keywords" is list: "trust", "claims", "citations"
+      map:
+        "chunk_id" is "sample-general-1"
+        "upload_id" is "sample-general"
+        "document_id" is "sample-general"
+        "source_name" is "Architecture Notes"
+        "tag" is "general"
+        "page_number" is 1
+        "chunk_index" is 1
+        "ingestion_phase" is "seeded"
+        "text" is "Hybrid retrieval combines semantic ranking with lexical overlap."
+        "keywords" is list: "hybrid", "retrieval", "semantic", "lexical"
+      map:
+        "chunk_id" is "sample-general-2"
+        "upload_id" is "sample-general"
+        "document_id" is "sample-general"
+        "source_name" is "Architecture Notes"
+        "tag" is "general"
+        "page_number" is 2
+        "chunk_index" is 2
+        "ingestion_phase" is "seeded"
+        "text" is "Source weights can deterministically boost priority for selected collections."
+        "keywords" is list: "source", "weights", "deterministic", "priority"
+
+  create "DocumentLibrary" with map:
+    "id" is "sample-product"
+    "upload_id" is "sample-product"
+    "document_id" is "sample-product"
+    "source_name" is "Product Manual"
+    "source_type" is "Text"
+    "status" is "indexed"
+    "ingestion_stage" is "indexed"
+    "progress_percent" is 100
+    "quality" is "pass"
+    "selected" is true
+    "status_label" is "Indexed • Text"
+    "scope_label" is "product • priority 2"
+    "weight" is 2
+    "tags" is list: "product"
+    "primary_tag" is "product"
+    "quality_note" is "Seeded sample source."
+    "last_error" is ""
+  as sample_product
+
+  create "DocumentLibrary" with map:
+    "id" is "sample-policy"
+    "upload_id" is "sample-policy"
+    "document_id" is "sample-policy"
+    "source_name" is "Policy Handbook"
+    "source_type" is "Text"
+    "status" is "indexed"
+    "ingestion_stage" is "indexed"
+    "progress_percent" is 100
+    "quality" is "pass"
+    "selected" is true
+    "status_label" is "Indexed • Text"
+    "scope_label" is "policy • priority 2"
+    "weight" is 2
+    "tags" is list: "policy"
+    "primary_tag" is "policy"
+    "quality_note" is "Seeded sample source."
+    "last_error" is ""
+  as sample_policy
+
+  create "DocumentLibrary" with map:
+    "id" is "sample-general"
+    "upload_id" is "sample-general"
+    "document_id" is "sample-general"
+    "source_name" is "Architecture Notes"
+    "source_type" is "Text"
+    "status" is "indexed"
+    "ingestion_stage" is "indexed"
+    "progress_percent" is 100
+    "quality" is "pass"
+    "selected" is true
+    "status_label" is "Indexed • Text"
+    "scope_label" is "general • priority 1"
+    "weight" is 1
+    "tags" is list: "general"
+    "primary_tag" is "general"
+    "quality_note" is "Seeded sample source."
+    "last_error" is ""
+  as sample_general
+
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::sample-product"
+    "project_id" is state.active_project_id
+    "upload_id" is "sample-product"
+  as sample_project_binding_product
+
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::sample-policy"
+    "project_id" is state.active_project_id
+    "upload_id" is "sample-policy"
+  as sample_project_binding_policy
+
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::sample-general"
+    "project_id" is state.active_project_id
+    "upload_id" is "sample-general"
+  as sample_project_binding_general
+
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Sample corpus loaded. Ask a question to inspect deterministic retrieval."
+  as seed_notice
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "ok"
+
+flow "run_demo_mode_path": requires true
+  let init_defaults_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  delete "DocumentLibrary" where true
+  delete "CitationCard" where true
+  delete "ExplainSummary" where true
+  delete "ProjectBinding" where true
+  delete "Notice" where true
+
+  create "DocumentLibrary" with map:
+    "id" is "guided-product"
+    "upload_id" is "guided-product"
+    "document_id" is "guided-product"
+    "source_name" is "Guided Product Manual"
+    "source_type" is "Text"
+    "status" is "indexed"
+    "ingestion_stage" is "indexed"
+    "progress_percent" is 100
+    "quality" is "pass"
+    "selected" is true
+    "status_label" is "Indexed • Text"
+    "scope_label" is "product • priority"
+    "weight" is 2
+    "tags" is list: "product"
+    "primary_tag" is "product"
+    "quality_note" is "Guided deterministic source."
+    "last_error" is ""
+  as guided_product
+
+  create "ProjectBinding" with map:
+    "id" is state.active_project_id + "::guided-product"
+    "project_id" is state.active_project_id
+    "upload_id" is "guided-product"
+  as guided_project_binding
+
+  set state.total_documents is 1
+  set state.ready_documents is 1
+  set state.queued_documents is 0
+  set state.ingesting_documents is 0
+  set state.failed_documents is 0
+  set state.chunk_count is 2
+  set state.tag_product_count is 1
+  set state.tag_policy_count is 0
+  set state.tag_general_count is 0
+  set state.tag_custom_count is 0
+  set state.tag_breakdown is "guided-product source is active"
+  set state.summary_headline is "Deterministic index summary"
+  set state.summary_status_line is "guided run prepared one indexed source"
+
+  set state.answer_citations is list:
+    map:
+      "title" is "Guided Product Manual"
+      "source_id" is "guided-product"
+      "chunk_id" is "guided-product-1"
+      "document_id" is "guided-product"
+      "page_number" is 1
+      "snippet" is "Runtime-enforced citations keep every claim grounded in retrievable evidence."
+      "tag" is "product"
+    map:
+      "title" is "Guided Product Manual"
+      "source_id" is "guided-product"
+      "chunk_id" is "guided-product-2"
+      "document_id" is "guided-product"
+      "page_number" is 2
+      "snippet" is "Hybrid retrieval combines semantic recall and lexical overlap with deterministic ordering."
+      "tag" is "product"
+
+  create "CitationCard" with map:
+    "id" is 1
+    "answer_id" is 1
+    "source_name" is "Guided Product Manual"
+    "source_id" is "guided-product"
+    "chunk_id" is "guided-product-1"
+    "document_id" is "guided-product"
+    "page_number" is 1
+    "page_label" is "Page (snippet fallback)"
+    "snippet" is "Runtime-enforced citations keep every claim grounded in retrievable evidence."
+    "tag" is "product"
+  as guided_citation_1
+
+  create "CitationCard" with map:
+    "id" is 2
+    "answer_id" is 1
+    "source_name" is "Guided Product Manual"
+    "source_id" is "guided-product"
+    "chunk_id" is "guided-product-2"
+    "document_id" is "guided-product"
+    "page_number" is 2
+    "page_label" is "Page (snippet fallback)"
+    "snippet" is "Hybrid retrieval combines semantic recall and lexical overlap with deterministic ordering."
+    "tag" is "product"
+  as guided_citation_2
+
+  create "ExplainSummary" with map:
+    "query" is "runtime enforces citations"
+    "retrieval_mode" is "guided_deterministic"
+    "route" is "definition"
+    "retrieval_params" is "semantic_weight, semantic_k, lexical_k, final_top_k, filter_tags=product"
+    "candidate_count" is 2
+    "semantic_candidate_count" is 1
+    "lexical_candidate_count" is 1
+    "final_selection" is state.answer_citations
+    "ordering" is "deterministic guided ordering"
+    "rerank_policy" is "guided mode"
+    "expansion_mode" is "none"
+    "chunking_config" is "guided fixed snippets"
+    "citation_status" is "Trusted"
+    "citation_count" is 2
+    "citation_summary" is "Trusted | citations available"
+    "provider_mode" is "guided"
+    "context_used" is "guided context"
+    "prompt_used" is "guided prompt"
+  as guided_explain
+
+  set state.answer with:
+    query is "runtime enforces citations"
+    answer_text is "Citations are enforced so every answer remains inspectable and grounded in known sources."
+    citations is state.answer_citations
+    citation_count is 2
+    trusted is true
+    trust_score is 1
+    trust_label is "Trusted"
+    source_count is 1
+    confidence is 1
+    mode is "guided"
+    available is true
+
+  set state.selected_citation_source is "guided-product"
+  set state.ui.preview_source is map:
+    "title" is "Guided Product Manual"
+    "source_id" is "guided-product"
+    "chunk_id" is "guided-product-1"
+    "document_id" is "guided-product"
+    "page_number" is 1
+    "snippet" is "Runtime-enforced citations keep every claim grounded in retrievable evidence."
+  set state.drawer with:
+    has_selection is true
+
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Guided path complete. Review citations and explain details."
+  as notice_guided_done
+
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  return map:
+    "status" is "seeded"
+    "mode" is "guided"
+    "answer_text" is state.answer.answer_text
+
+flow "reset_demo": requires true
+  let init_status is call flow "rag_engine.initialize_defaults":
+    input:
+    output:
+      status
+
+  delete "DocumentLibrary" where true
+  delete "ExampleQuestion" where true
+  delete "Question" where true
+  delete "QueryProfile" where true
+  delete "Answer" where true
+  delete "CitationCard" where true
+  delete "RetrievalCandidate" where true
+  delete "RetrievalCandidateView" where true
+  delete "RankingDecision" where true
+  delete "ExplainSummary" where true
+  delete "ExplainCandidate" where true
+  delete "ProjectBinding" where true
+  delete "Notice" where true
+
+  set state.index with:
+    chunks is list:
+
+  set state.uploads.documents is list:
+  set state.chat.messages is list:
+  set state.chat.citations is list:
+  set state.loading is false
+  set state.selected_citation_source is ""
+  set state.ui.preview_source is map:
+    "title" is "Source preview"
+    "source_id" is ""
+    "error" is "Select a citation to open preview."
+
+  set state.drawer with:
+    has_selection is false
+
+  set state.answer with:
+    query is ""
+    answer_text is ""
+    citations is list:
+    citation_count is 0
+    trusted is false
+    trust_score is 0
+    trust_label is "No Support"
+    source_count is 0
+    confidence is 0
+    mode is "idle"
+    available is false
+
+  create "Notice" with map:
+    "id" is "current"
+    "message" is "Demo reset. Upload, ingest, ask, then verify every claim with sources."
+  as notice_reset
+
+  let summary_status is call flow "rag_engine.refresh_index_summary":
+    input:
+    output:
+      status
+  let project_status is call flow "rag_engine.refresh_project_stats":
+    input:
+    output:
+      status
+
+  return "reset"
