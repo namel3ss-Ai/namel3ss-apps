@@ -326,9 +326,9 @@ page "Library":
               empty_state: hidden
         column:
           section "Run Target":
-            text is "Repo-root check: n3 check apps/rag-demo/app.ai"
-            text is "Repo-root run: n3 run apps/rag-demo/app.ai --port 7360 --no-open"
-            text is "Renderer health: curl -sS http://127.0.0.1:7360/api/renderer-registry/health | jq ."
+            text is "Repo-root check: n3 check apps/rag-application/app.ai"
+            text is "Repo-root run: n3 run apps/rag-application/app.ai --port 7340 --no-open"
+            text is "Renderer health: curl -sS http://127.0.0.1:7340/api/renderer-registry/health | jq ."
 
     main:
       section "Upload and Index":

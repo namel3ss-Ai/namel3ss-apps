@@ -1,5 +1,0 @@
-Product Manual
-
-Indexing converts documents into deterministic chunks with stable IDs.
-Each chunk stores source metadata for citation cards and source previews.
-Chat answers are expected to remain grounded in retrieved evidence.
